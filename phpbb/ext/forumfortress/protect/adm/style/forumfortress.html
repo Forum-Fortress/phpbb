@@ -1,0 +1,94 @@
+<!-- INCLUDE overall_header.html -->
+
+<style>
+.ffDashboard{--ff-green:#087443;--ff-green-bright:#159458;--ff-green-soft:rgba(8,116,67,.1);--ff-amber:#b86313;--ff-border:rgba(127,127,127,.22);display:grid;gap:14px;margin-top:18px}.ffDashboard *{box-sizing:border-box}.ffCard,.ffDashboard fieldset{overflow:hidden;margin:0!important;border:1px solid var(--ff-border)!important;border-radius:10px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.05)}.ffHero{border-top:3px solid var(--ff-green)!important}.ffHeroHeader{display:flex;align-items:center;gap:13px;padding:18px;background:linear-gradient(135deg,var(--ff-green-soft),transparent 62%)}.ffMark{display:grid;flex:0 0 46px;width:46px;height:50px;place-content:center;gap:4px;clip-path:polygon(50% 0,94% 16%,88% 67%,70% 88%,50% 100%,30% 88%,12% 67%,6% 16%);background:linear-gradient(145deg,var(--ff-green-bright),#034f2e);filter:drop-shadow(0 2px 2px rgba(0,0,0,.18))}.ffMark i{display:block;width:25px;height:4px;border-radius:3px;background:#f4f0e5}.ffMark i:nth-child(2){width:20px}.ffMark i:nth-child(3){width:15px}.ffHeroCopy{display:grid;flex:1;gap:2px}.ffHeroCopy strong{font-size:17px}.ffHeroCopy span,.ffSectionHeader span,.ffMaintenance small{color:#6c7480}.ffPill{padding:5px 10px;border-radius:999px;background:rgba(108,116,128,.12);color:#6c7480;font-size:12px;font-weight:700}.ffPill.is-connected{background:var(--ff-green-soft);color:var(--ff-green-bright)}.ffActionGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:0 18px 18px}.ffActionGrid form,.ffActionGrid a{display:flex;width:100%;margin:0!important}.ffButton{display:flex!important;align-items:center;justify-content:center;min-height:42px;width:100%;border-radius:6px!important;font-weight:600!important;text-align:center}.ffButton--primary{background:var(--ff-green)!important;border-color:var(--ff-green)!important;color:#fff!important}.ffButton--attack{color:var(--ff-amber)!important;border-color:rgba(184,99,19,.45)!important}.ffButton--quiet{background:#fff!important}.ffNotice{display:flex;align-items:flex-start;gap:9px;padding:11px 13px;border:1px solid transparent;border-radius:8px;line-height:1.45}.ffNotice--success{border-color:rgba(21,148,88,.28);background:rgba(21,148,88,.09);color:#087443}.ffNotice--error{border-color:rgba(197,48,48,.28);background:rgba(197,48,48,.09);color:#a42424}.ffNotice span{flex:1}.ffSectionHeader{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;border-bottom:1px solid var(--ff-border)}.ffSectionHeader>div{display:grid;gap:2px}.ffSectionHeader strong{font-size:14px;color:#27313d}.ffSectionHeader a{color:var(--ff-green);font-size:12px;font-weight:600}.ffStatusGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.ffMetric{display:grid;gap:4px;min-width:0;padding:13px 16px;border-bottom:1px solid var(--ff-border)}.ffMetric:nth-child(odd){border-right:1px solid var(--ff-border)}.ffMetric:nth-last-child(-n+2){border-bottom:0}.ffMetric span{color:#6c7480;font-size:12px}.ffMetric strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.ffMetric.is-good strong{color:var(--ff-green-bright)}.ffMaintenance summary{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;cursor:pointer;list-style:none}.ffMaintenance summary::-webkit-details-marker{display:none}.ffMaintenance summary span{display:grid;gap:2px}.ffMaintenance[open] summary{border-bottom:1px solid var(--ff-border)}.ffMaintenanceBody{padding:14px 16px 16px}.ffMaintenanceBody p{margin:0 0 12px;color:#6c7480}.ffMaintenanceBody fieldset{margin:0 0 14px!important;box-shadow:none}.ffMaintenanceBody fieldset:last-child{margin-bottom:0!important}.ffDashboard fieldset>legend{float:left;width:100%;margin:0 0 4px;padding:14px 16px;border-bottom:1px solid var(--ff-border);font-size:14px;font-weight:700;color:#27313d;background:#fff}.ffDashboard fieldset>legend+*{clear:both}.ffDashboard fieldset>dl,.ffDashboard fieldset>p,.ffDashboard fieldset>table,.ffDashboard fieldset>a,.ffDashboard fieldset>input,.ffDashboard fieldset>br{margin-left:16px;margin-right:16px}.ffDashboard fieldset dl{display:grid;grid-template-columns:minmax(180px,34%) minmax(0,1fr);gap:12px;padding:9px 0;border-bottom:1px solid rgba(127,127,127,.14)}.ffDashboard fieldset dl:last-child{border-bottom:0}.ffDashboard fieldset dt,.ffDashboard fieldset dd{width:auto;margin:0;padding:0}.ffDashboard .submit-buttons{padding-bottom:14px}.ffDashboard table{width:calc(100% - 32px);margin:0 16px 14px}.ffDashboard .table1{border-collapse:collapse}.ffDashboard .table1 th,.ffDashboard .table1 td{padding:9px 8px;border-top:1px solid rgba(127,127,127,.14)}@media(max-width:700px){.ffHeroHeader{align-items:flex-start}.ffPill{margin-left:auto}.ffActionGrid,.ffStatusGrid{grid-template-columns:1fr}.ffMetric:nth-child(odd){border-right:0}.ffMetric:nth-last-child(2){border-bottom:1px solid var(--ff-border)}.ffDashboard fieldset dl{grid-template-columns:1fr;gap:5px}}
+</style>
+
+<div class="ffDashboard">
+	<section class="ffCard ffHero">
+		<div class="ffHeroHeader"><div class="ffMark" aria-hidden="true"><i></i><i></i><i></i></div><div class="ffHeroCopy"><strong>{L_ACP_FORUMFORTRESS_SETTINGS}</strong><span>{L_ACP_FORUMFORTRESS_EXPLAIN}</span></div><span class="ffPill<!-- IF FFPROTECT_SITE_STATUS --> is-connected<!-- ENDIF -->"><!-- IF FFPROTECT_SITE_STATUS -->Connected<!-- ELSE -->Configured<!-- ENDIF --></span></div>
+		<form method="post" action="{U_ACTION}" class="ffActionGrid">
+			<!-- IF FFPROTECT_PORTAL_DIRECT_URL --><a class="button1 ffButton ffButton--primary" href="{FFPROTECT_PORTAL_DIRECT_URL}" target="_blank" rel="noopener noreferrer">{L_ACP_FORUMFORTRESS_PORTAL_LOGIN}</a><!-- ENDIF -->
+			<!-- IF FFPROTECT_CAN_PORTAL --><!-- IF FFPROTECT_ATTACK_MODE_ACTIVE --><input class="button1 ffButton" type="submit" name="action_attack_off" value="{L_ACP_FORUMFORTRESS_ATTACK_MODE_DISABLE}" /><!-- ELSE --><input class="button1 ffButton ffButton--attack" type="submit" name="action_attack_on" value="{L_ACP_FORUMFORTRESS_ATTACK_MODE_ENABLE}" /><!-- ENDIF --><!-- ENDIF -->
+			<input class="button1 ffButton" type="submit" name="action_test" value="{L_ACP_FORUMFORTRESS_RUN_TEST}" />
+			{S_FORM_TOKEN}
+		</form>
+		<div class="ffVersion">{L_ACP_FORUMFORTRESS_PLUGIN_VERSION}: {FFPROTECT_PLUGIN_VERSION}</div>
+	</section>
+
+	<!-- IF FFPROTECT_AUTO_BOOTSTRAP -->
+	<div class="ffNotice ffNotice--success"><span><strong>{L_ACP_FORUMFORTRESS_AUTO_BOOTSTRAP}</strong><!-- IF FFPROTECT_AUTO_BOOTSTRAP_ERROR --> {FFPROTECT_AUTO_BOOTSTRAP_ERROR}<!-- ELSE --> {L_ACP_FORUMFORTRESS_SITE_IDENTITY_SAVED}<!-- ENDIF --></span></div>
+	<!-- ENDIF -->
+
+	<!-- IF FFPROTECT_ACTION_RESULT -->
+	<div class="<!-- IF FFPROTECT_ACTION_RESULT_ERROR -->ffNotice ffNotice--error<!-- ELSE -->ffNotice ffNotice--success<!-- ENDIF -->"><span><strong>{L_ACP_FORUMFORTRESS_TEST_RESULT}</strong><!-- IF FFPROTECT_ACTION_RESULT_ERROR --> {FFPROTECT_ACTION_RESULT_ERROR}<!-- ENDIF --></span></div>
+	<!-- ENDIF -->
+
+	<section class="ffCard">
+		<div class="ffSectionHeader"><div><strong>{L_ACP_FORUMFORTRESS_SITE_STATUS}</strong><span>Current protection and service details.</span></div><a href="{U_ACTION}">Refresh</a></div>
+		<div class="ffStatusGrid">
+			<div class="ffMetric<!-- IF FFPROTECT_SITE_STATUS --> is-good<!-- ENDIF -->"><span>Protection</span><strong><!-- IF FFPROTECT_SITE_STATUS -->Active<!-- ELSE -->Configured<!-- ENDIF --></strong></div>
+			<div class="ffMetric"><span>{L_ACP_FORUMFORTRESS_PLAN}</span><strong><!-- IF FFPROTECT_SITE_PLAN -->{FFPROTECT_SITE_PLAN}<!-- ELSE -->{L_ACP_FORUMFORTRESS_UNKNOWN}<!-- ENDIF --></strong></div>
+			<div class="ffMetric"><span>{L_ACP_FORUMFORTRESS_PREFERRED_ENDPOINT}</span><strong><!-- IF FFPROTECT_PREFERRED_ENDPOINT -->{FFPROTECT_PREFERRED_ENDPOINT}<!-- ELSE -->{L_ACP_FORUMFORTRESS_UNKNOWN}<!-- ENDIF --></strong></div>
+			<div class="ffMetric"><span>{L_ACP_FORUMFORTRESS_TEST_ANSWERED_ENDPOINT}</span><strong><!-- IF FFPROTECT_TEST_ANSWERED_ENDPOINT -->{FFPROTECT_TEST_ANSWERED_ENDPOINT}<!-- ELSE -->{L_ACP_FORUMFORTRESS_UNKNOWN}<!-- ENDIF --></strong></div>
+			<div class="ffMetric"><span>{L_ACP_FORUMFORTRESS_CURRENT_MONTH_CHECKS}</span><strong><!-- IF FFPROTECT_FORUM_STATS -->{FFPROTECT_CURRENT_MONTH_CHECKS}<!-- ELSE -->{L_ACP_FORUMFORTRESS_UNKNOWN}<!-- ENDIF --></strong></div>
+			<div class="ffMetric"><span>Decisions</span><strong><!-- IF FFPROTECT_FORUM_STATS -->{FFPROTECT_ALLOWS} allowed / {FFPROTECT_BLOCKS} blocked<!-- ELSE -->{L_ACP_FORUMFORTRESS_UNKNOWN}<!-- ENDIF --></strong></div>
+		</div>
+	</section>
+
+	<details class="ffCard ffMaintenance">
+		<summary><span><strong>Maintenance and configuration</strong><small>Connection, protection policy, and registration</small></span><span aria-hidden="true">⌄</span></summary>
+		<div class="ffMaintenanceBody">
+			<p>{L_ACP_FORUMFORTRESS_EXPLAIN}</p>
+			<form id="acp_forumfortress" method="post" action="{U_ACTION}">
+				<fieldset>
+					<legend>{L_ACP_FORUMFORTRESS_CONNECTION}</legend>
+					<dl><dt><label for="ffprotect_enabled">{L_ACP_FORUMFORTRESS_ENABLED}{L_COLON}</label></dt><dd><input type="checkbox" id="ffprotect_enabled" name="ffprotect_enabled" value="1"<!-- IF FFPROTECT_ENABLED --> checked="checked"<!-- ENDIF --> /></dd></dl>
+					<dl><dt><label for="ffprotect_api_region">{L_ACP_FORUMFORTRESS_API_REGION}{L_COLON}</label><br /><span>{L_ACP_FORUMFORTRESS_API_REGION_EXPLAIN}</span></dt><dd><select id="ffprotect_api_region" name="ffprotect_api_region"><option value="global"<!-- IF FFPROTECT_API_REGION == 'global' --> selected="selected"<!-- ENDIF -->>{L_ACP_FORUMFORTRESS_REGION_GLOBAL}</option><option value="uk"<!-- IF FFPROTECT_API_REGION == 'uk' --> selected="selected"<!-- ENDIF -->>{L_ACP_FORUMFORTRESS_REGION_UK}</option><option value="eu"<!-- IF FFPROTECT_API_REGION == 'eu' --> selected="selected"<!-- ENDIF -->>{L_ACP_FORUMFORTRESS_REGION_EU}</option><option value="us"<!-- IF FFPROTECT_API_REGION == 'us' --> selected="selected"<!-- ENDIF -->>{L_ACP_FORUMFORTRESS_REGION_US}</option></select></dd></dl>
+					<dl><dt><label for="ffprotect_allow_global_fallback">{L_ACP_FORUMFORTRESS_ALLOW_GLOBAL_FALLBACK}{L_COLON}</label><br /><span>{L_ACP_FORUMFORTRESS_ALLOW_GLOBAL_FALLBACK_EXPLAIN}</span></dt><dd><input type="checkbox" id="ffprotect_allow_global_fallback" name="ffprotect_allow_global_fallback" value="1"<!-- IF FFPROTECT_ALLOW_GLOBAL_FALLBACK --> checked="checked"<!-- ENDIF --> /></dd></dl>
+					<dl><dt><label for="ffprotect_control_base_url">{L_ACP_FORUMFORTRESS_CONTROL_BASE_URL}{L_COLON}</label></dt><dd><input type="text" class="text medium" id="ffprotect_control_base_url" name="ffprotect_control_base_url" value="{FFPROTECT_CONTROL_BASE_URL}" /></dd></dl>
+					<dl><dt><label for="ffprotect_timeout">{L_ACP_FORUMFORTRESS_TIMEOUT}{L_COLON}</label></dt><dd><input type="number" min="1" max="30" id="ffprotect_timeout" name="ffprotect_timeout" value="{FFPROTECT_TIMEOUT}" /></dd></dl>
+					<dl><dt><label for="ffprotect_api_key">{L_ACP_FORUMFORTRESS_API_KEY}{L_COLON}</label></dt><dd><input type="password" class="text medium" id="ffprotect_api_key" name="ffprotect_api_key" value="" placeholder="{FFPROTECT_API_KEY_MASKED}" autocomplete="new-password" /><br /><span>Leave blank to keep the current API key.</span></dd></dl>
+					<dl><dt><label for="ffprotect_site_id">{L_ACP_FORUMFORTRESS_SITE_ID}{L_COLON}</label></dt><dd><input type="text" class="text medium" id="ffprotect_site_id" name="ffprotect_site_id" value="{FFPROTECT_SITE_ID}" /></dd></dl>
+					<dl><dt><label for="ffprotect_fail_open">{L_ACP_FORUMFORTRESS_FAIL_OPEN}{L_COLON}</label></dt><dd><input type="checkbox" id="ffprotect_fail_open" name="ffprotect_fail_open" value="1"<!-- IF FFPROTECT_FAIL_OPEN --> checked="checked"<!-- ENDIF --> /></dd></dl>
+					<dl><dt>Domain</dt><dd>{FFPROTECT_DOMAIN}</dd></dl>
+				</fieldset>
+				<fieldset>
+					<legend>{L_ACP_FORUMFORTRESS_PROTECTION}</legend>
+					<dl><dt><label for="ffprotect_bypass_administrators">{L_ACP_FORUMFORTRESS_BYPASS_ADMINISTRATORS}{L_COLON}</label><br /><span>{L_ACP_FORUMFORTRESS_BYPASS_ADMINISTRATORS_EXPLAIN}</span></dt><dd><input type="checkbox" id="ffprotect_bypass_administrators" name="ffprotect_bypass_administrators" value="1"<!-- IF FFPROTECT_BYPASS_ADMINISTRATORS --> checked="checked"<!-- ENDIF --> /></dd></dl>
+					<dl><dt><label for="ffprotect_bypass_moderators">{L_ACP_FORUMFORTRESS_BYPASS_MODERATORS}{L_COLON}</label><br /><span>{L_ACP_FORUMFORTRESS_BYPASS_MODERATORS_EXPLAIN}</span></dt><dd><input type="checkbox" id="ffprotect_bypass_moderators" name="ffprotect_bypass_moderators" value="1"<!-- IF FFPROTECT_BYPASS_MODERATORS --> checked="checked"<!-- ENDIF --> /></dd></dl>
+					<dl><dt><label for="ffprotect_send_ham">{L_ACP_FORUMFORTRESS_SEND_HAM}{L_COLON}</label></dt><dd><input type="checkbox" id="ffprotect_send_ham" name="ffprotect_send_ham" value="1"<!-- IF FFPROTECT_SEND_HAM --> checked="checked"<!-- ENDIF --> /></dd></dl>
+					<dl><dt><label for="ffprotect_delete_rejected_users">{L_ACP_FORUMFORTRESS_DELETE_REJECTED_USERS}{L_COLON}</label></dt><dd><input type="checkbox" id="ffprotect_delete_rejected_users" name="ffprotect_delete_rejected_users" value="1"<!-- IF FFPROTECT_DELETE_REJECTED_USERS --> checked="checked"<!-- ENDIF --> /></dd></dl>
+					<dl><dt><label for="ffprotect_debug_log">{L_ACP_FORUMFORTRESS_DEBUG_LOG}{L_COLON}</label></dt><dd><input type="checkbox" id="ffprotect_debug_log" name="ffprotect_debug_log" value="1"<!-- IF FFPROTECT_DEBUG_LOG --> checked="checked"<!-- ENDIF --> /></dd></dl>
+				</fieldset>
+				<fieldset class="submit-buttons"><input class="button1 ffButton ffButton--primary" type="submit" id="submit" name="submit" value="{L_SUBMIT}" />{S_FORM_TOKEN}</fieldset>
+			</form>
+			<fieldset>
+				<legend>Diagnostics</legend>
+				<dl><dt>{L_ACP_FORUMFORTRESS_REGISTRATION_REQUIRED}</dt><dd>{FFPROTECT_SITE_REGISTRATION_REQUIRED}</dd></dl>
+				<dl><dt>{L_ACP_FORUMFORTRESS_PREFERRED_MISSING_ENDPOINT}</dt><dd><!-- IF FFPROTECT_PREFERRED_MISSING_ENDPOINT -->{FFPROTECT_PREFERRED_MISSING_ENDPOINT}<!-- ELSE -->{L_ACP_FORUMFORTRESS_NO}<!-- ENDIF --></dd></dl>
+				<dl><dt>{L_ACP_FORUMFORTRESS_LAST_HEALTH_AT}</dt><dd><!-- IF FFPROTECT_LAST_HEALTH_AT_TEXT -->{FFPROTECT_LAST_HEALTH_AT_TEXT}<!-- ELSE -->{L_ACP_FORUMFORTRESS_UNKNOWN}<!-- ENDIF --></dd></dl>
+				<dl><dt>{L_ACP_FORUMFORTRESS_LAST_FAILURE}</dt><dd><!-- IF FFPROTECT_LAST_FAILURE_TEXT -->{FFPROTECT_LAST_FAILURE_TEXT}<!-- ELSE -->{L_ACP_FORUMFORTRESS_NONE}<!-- ENDIF --></dd></dl>
+				<dl><dt>Forum last synced</dt><dd><!-- IF FFPROTECT_FORUM_LAST_SYNCED_TEXT -->{FFPROTECT_FORUM_LAST_SYNCED_TEXT}<!-- ELSE -->{L_ACP_FORUMFORTRESS_UNKNOWN}<!-- ENDIF --></dd></dl>
+				<dl><dt>{L_ACP_FORUMFORTRESS_DATASET_VERSION}</dt><dd><!-- IF FFPROTECT_SITE_DATASET_VERSION -->{FFPROTECT_SITE_DATASET_VERSION}<!-- ELSE -->{L_ACP_FORUMFORTRESS_UNKNOWN}<!-- ENDIF --></dd></dl>
+				<!-- IF FFPROTECT_PLUGIN_RELEASE --><dl><dt>Plugin updates</dt><dd><!-- IF FFPROTECT_PLUGIN_UPDATE_AVAILABLE -->Update available. Latest version {FFPROTECT_PLUGIN_LATEST_VERSION}. <a href="{FFPROTECT_PLUGIN_DOWNLOAD_URL}" target="_blank" rel="noopener">Download update</a><!-- ELSE -->Current version is up to date.<!-- ENDIF --></dd></dl><!-- ENDIF -->
+			</fieldset>
+			<!-- IF FFPROTECT_SHOW_REGISTRATION -->
+			<form method="post" action="{U_ACTION}">
+				<fieldset><legend>{L_ACP_FORUMFORTRESS_REGISTRATION}</legend><dl><dt><label for="registration_email">{L_ACP_FORUMFORTRESS_REGISTRATION_EMAIL}{L_COLON}</label></dt><dd><input type="email" class="text medium" id="registration_email" name="registration_email" value="" /><input class="button1 ffButton ffButton--primary" type="submit" name="action_register" value="{L_ACP_FORUMFORTRESS_COMPLETE_REGISTRATION}" /></dd></dl>{S_FORM_TOKEN}</fieldset>
+			</form>
+			<!-- ENDIF -->
+		</div>
+	</details>
+
+	<!-- IF .ffprotect_endpoint_latency -->
+	<section class="ffCard">
+		<div class="ffSectionHeader"><div><strong>{L_ACP_FORUMFORTRESS_ENDPOINT_HEALTH}</strong><span>Measured from this forum server.</span></div></div>
+		<table class="table1"><thead><tr><th>{L_ACP_FORUMFORTRESS_ENDPOINT}</th><th>{L_ACP_FORUMFORTRESS_LATENCY}</th></tr></thead><tbody>
+		<!-- BEGIN ffprotect_endpoint_latency --><tr><td>{ffprotect_endpoint_latency.ENDPOINT}<!-- IF ffprotect_endpoint_latency.IS_PREFERRED --> <span class="gensmall">({L_ACP_FORUMFORTRESS_PREFERRED_LABEL})</span><!-- ENDIF --></td><td>{ffprotect_endpoint_latency.LATENCY}</td></tr><!-- END ffprotect_endpoint_latency -->
+		</tbody></table>
+	</section>
+	<!-- ENDIF -->
+</div>
+
+<!-- INCLUDE overall_footer.html -->

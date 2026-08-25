@@ -1,0 +1,19 @@
+<?php
+
+/*
+ * phpBB loads extension-local vendor/autoload.php files before ACP dispatch.
+ * Keep this tiny loader in the package so the extension works when Composer is
+ * not available on the customer's production host.
+ */
+spl_autoload_register(static function (string $class): void {
+	$prefix = 'forumfortress\\protect\\';
+	if (strncmp($class, $prefix, strlen($prefix)) !== 0) {
+		return;
+	}
+
+	$relative = substr($class, strlen($prefix));
+	$path = __DIR__ . '/../' . str_replace('\\', '/', $relative) . '.php';
+	if (is_file($path)) {
+		require_once $path;
+	}
+});

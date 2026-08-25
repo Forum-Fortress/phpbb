@@ -1,0 +1,72 @@
+services:
+    forumfortress.protect.timeout_queue:
+        class: forumfortress\protect\service\timeout_queue
+        arguments:
+            - '@config'
+            - '@config_text'
+            - '@dbal.conn'
+            - '@content.visibility'
+            - '%tables.posts%'
+            - '%tables.topics%'
+
+    forumfortress.protect.moderation_bridge:
+        class: forumfortress\protect\service\moderation_bridge
+        arguments:
+            - '@dbal.conn'
+            - '@config'
+            - '@user'
+            - '%tables.posts%'
+            - '%tables.topics%'
+            - '%tables.users%'
+            - '%core.root_path%'
+            - '%core.php_ext%'
+            - '@content.visibility'
+            - '@forumfortress.protect.timeout_queue'
+
+    forumfortress.protect.api_client:
+        class: forumfortress\protect\service\api_client
+        arguments:
+            - '@config'
+            - '@config_text'
+            - '@user'
+            - '@auth'
+            - '@request'
+            - '%core.root_path%'
+            - '%core.php_ext%'
+            - '@forumfortress.protect.moderation_bridge'
+            - '@forumfortress.protect.timeout_queue'
+
+    forumfortress.protect.cron.task.sync:
+        class: forumfortress\protect\cron\task\sync
+        public: true
+        arguments:
+            - '@forumfortress.protect.api_client'
+            - '@config'
+        calls:
+            - [set_name, [cron.task.forumfortress.protect.sync]]
+        tags:
+            - { name: cron.task }
+
+    forumfortress.protect.cron.task.endpoint_catalog:
+        class: forumfortress\protect\cron\task\endpoint_catalog
+        public: true
+        arguments:
+            - '@forumfortress.protect.api_client'
+            - '@config'
+            - '@config_text'
+        calls:
+            - [set_name, [cron.task.forumfortress.protect.endpoint_catalog]]
+        tags:
+            - { name: cron.task }
+
+    forumfortress.protect.listener:
+        class: forumfortress\protect\event\listener
+        arguments:
+            - '@forumfortress.protect.api_client'
+            - '@user'
+            - '@request'
+            - '@log'
+            - '@dbal.conn'
+            - '%tables.users%'
+        tags:
+            - { name: event.listener }
