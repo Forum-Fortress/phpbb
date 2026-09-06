@@ -109,7 +109,7 @@ class acp_module_helper
 		$sql = 'SELECT module_id
 			FROM ' . $modules_table . '
 			WHERE module_class = \'acp\'
-				AND parent_id = ' . $dot_mods_id . "
+				AND parent_id = ' . (int) $dot_mods_id . "
 				AND module_langname = 'ACP_FORUMFORTRESS_TITLE'
 			ORDER BY module_id DESC";
 		$result = $db->sql_query_limit($sql, 1);

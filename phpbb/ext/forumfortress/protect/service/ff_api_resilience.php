@@ -1,21 +1,32 @@
 <?php
 /**
+ *
+ * Forum Fortress. An extension for the phpBB Forum Software package.
+ *
+ * @copyright (c) 2026 Marscastle Ltd trading as Forum Fortress
+ * @license license.txt GNU General Public License, version 2 (GPL-2.0)
+ *
+ */
+
+declare(strict_types=1);
+
+namespace forumfortress\protect\service;
+
+/**
  * Shared Forum Fortress API resilience helpers (bootstrap / catalog / hot failover).
  *
  * Copied into XenForo, phpBB, and Invision plugin trees on release; keep copies in sync.
  *
  * Manual verification matrix (when changing this file):
- * - control.ffapi.net down: bootstrap succeeds via api.ffapi.net or edge /v1/node-endpoints + edge bootstrap
- * - preferred edge down: check retries api.ffapi.net then next edge; catalog refresh second pass
+ * - fortress.ffapi.net down: bootstrap succeeds via api.ffapi.net or edge /v1/node-endpoints + edge bootstrap
+ * - GeoDNS attempt down: check retries catalog edges without changing the next request's primary
  * - capabilities: control -> api.ffapi.net -> edge bases
- * - tier-3 edge with lower health_ms wins over tier-1 edge for preferred / request order
+ * - normal requests start at GeoDNS; catalog entries are same-request fallbacks only
  * - offline ff_ob_* keys: checks pinned to issuer preferred_endpoint until control returns normal key
- * - POST /v1/check: edges first; control.ffapi.net only when catalog control_check_fallback,
- *   no eligible edge, or last retry after edge failure (see edgesHealthyForCheckTraffic)
+ * - POST /v1/check: GeoDNS first; control is used only when the catalog allows fallback
  */
-declare(strict_types=1);
 
-final class FfApiResilience
+final class ff_api_resilience
 {
 	public const OFFLINE_TOKEN_PREFIX = 'ff_ob_';
 	public const DEFAULT_API_REGION = 'global';
@@ -82,11 +93,20 @@ final class FfApiResilience
 	public const ENDPOINT_CATALOG_FAILED_AT_KEY = 'catalog_refresh_failed_at';
 	public const RUNTIME_CHECK_ENDPOINT_TIMEOUT_SECONDS = 1;
 	public const RUNTIME_CHECK_TOTAL_BUDGET_SECONDS = 5;
-	public const ENDPOINT_SUPPRESSION_SECONDS = 120;
 
 	public static function normaliseBaseUrl(string $value): string
 	{
-		return rtrim(trim($value), '/');
+		$value = rtrim(trim($value), '/');
+		$parts = parse_url($value);
+		if (!is_array($parts)
+			|| strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+			|| trim((string) ($parts['host'] ?? '')) === ''
+			|| isset($parts['user']) || isset($parts['pass'])
+			|| isset($parts['query']) || isset($parts['fragment']))
+		{
+			return '';
+		}
+		return $value;
 	}
 
 	/** PHP 7.4-compatible string helpers (str_starts_with/str_contains are PHP 8+). */
@@ -262,11 +282,6 @@ final class FfApiResilience
 		return $tier;
 	}
 
-	public static function isHealthyLatency($ms): bool
-	{
-		return is_int($ms) && $ms >= 0;
-	}
-
 	/**
 	 * @param array<string, array<string, mixed>> $endpointMeta
 	 */
@@ -281,42 +296,7 @@ final class FfApiResilience
 	 * @param array<string, array<string, mixed>> $endpointMeta
 	 */
 	/**
-	 * True when at least one non-backup base can serve /v1/check* (mirrors endpoint eligibility).
-	 *
-	 * @param array<string, int|null> $healthMs
-	 * @param array<string, array<string, mixed>> $endpointMeta
-	 * @param callable(string, ?string): bool $isBackupEndpoint
-	 */
-	public static function edgesHealthyForCheckTraffic(
-		array $healthMs,
-		array $endpointMeta,
-		callable $isBackupEndpoint
-	): bool {
-		foreach ($healthMs as $base => $ms)
-		{
-			$base = self::normaliseBaseUrl((string) $base);
-			if ($base === '')
-			{
-				continue;
-			}
-			$meta = self::endpointMetaForBase($endpointMeta, $base);
-			$role = isset($meta['role']) ? (string) $meta['role'] : null;
-			if ($isBackupEndpoint($base, $role))
-			{
-				continue;
-			}
-			$health = is_int($ms) ? $ms : null;
-			if (self::endpointEligibleForCheckTraffic($endpointMeta, $base, $health))
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	/**
-	 * Keep control.ffapi.net last on check paths so edges are always tried first.
+	 * Keep fortress.ffapi.net last on check paths so edges are always tried first.
 	 *
 	 * @param list<string> $bases
 	 * @return list<string>
@@ -353,177 +333,6 @@ final class FfApiResilience
 		}
 
 		return $rest;
-	}
-
-	public static function endpointEligibleForCheckTraffic(
-		array $endpointMeta,
-		string $baseUrl,
-		?int $healthMs
-	): bool {
-		$baseUrl = self::normaliseBaseUrl($baseUrl);
-		if ($baseUrl === '')
-		{
-			return false;
-		}
-		$meta = self::endpointMetaForBase($endpointMeta, $baseUrl);
-		if (!array_key_exists('check_ready', $meta))
-		{
-			return true;
-		}
-		if (!empty($meta['check_ready']))
-		{
-			return true;
-		}
-
-		return self::isHealthyLatency($healthMs);
-	}
-
-	/**
-	 * @param array<string, int|null> $healthMs
-	 * @param array<string, array<string, mixed>> $endpointMeta
-	 * @param callable(string, ?string): bool $isBackupEndpoint
-	 */
-	public static function lowestLatencyHealthyBase(
-		array $bases,
-		array $healthMs,
-		array $endpointMeta,
-		callable $isBackupEndpoint,
-		bool $requireCheckReady,
-		string $fallback
-	): string {
-		$fallback = self::normaliseBaseUrl($fallback);
-		$best = $fallback;
-		$bestMs = PHP_INT_MAX;
-		foreach ($bases as $base)
-		{
-			$base = self::normaliseBaseUrl((string) $base);
-			if ($base === '')
-			{
-				continue;
-			}
-			$ms = $healthMs[$base] ?? null;
-			if (!self::isHealthyLatency($ms))
-			{
-				continue;
-			}
-			$meta = self::endpointMetaForBase($endpointMeta, $base);
-			$role = isset($meta['role']) ? (string) $meta['role'] : null;
-			if ($isBackupEndpoint($base, $role))
-			{
-				continue;
-			}
-			// A current healthy probe is authoritative over stale check_ready=false metadata.
-			if ($ms < $bestMs)
-			{
-				$bestMs = (int) $ms;
-				$best = $base;
-			}
-		}
-
-		return $best !== '' ? $best : $fallback;
-	}
-
-	/**
-	 * @param list<string> $bases
-	 * @param array<string, int|null> $healthMs
-	 * @param array<string, array<string, mixed>> $endpointMeta
-	 * @param callable(string, ?string): bool $isBackupEndpoint
-	 * @return list<string>
-	 */
-	public static function sortBasesByHealthyLatency(
-		array $bases,
-		array $healthMs,
-		array $endpointMeta,
-		callable $isBackupEndpoint
-	): array {
-		$normalised = [];
-		foreach ($bases as $base)
-		{
-			$base = self::normaliseBaseUrl((string) $base);
-			if ($base !== '' && !in_array($base, $normalised, true))
-			{
-				$normalised[] = $base;
-			}
-		}
-		usort($normalised, function ($left, $right) use ($healthMs, $endpointMeta, $isBackupEndpoint) {
-			$leftMs = $healthMs[$left] ?? null;
-			$rightMs = $healthMs[$right] ?? null;
-			$leftMeta = self::endpointMetaForBase($endpointMeta, $left);
-			$rightMeta = self::endpointMetaForBase($endpointMeta, $right);
-			$leftHealthy = self::isHealthyLatency($leftMs);
-			$rightHealthy = self::isHealthyLatency($rightMs);
-			if ($leftHealthy && $rightHealthy)
-			{
-				$leftRole = isset($leftMeta['role']) ? (string) $leftMeta['role'] : null;
-				$rightRole = isset($rightMeta['role']) ? (string) $rightMeta['role'] : null;
-				$leftBackup = $isBackupEndpoint($left, $leftRole) ? 1 : 0;
-				$rightBackup = $isBackupEndpoint($right, $rightRole) ? 1 : 0;
-				if ($leftBackup !== $rightBackup)
-				{
-					return $leftBackup <=> $rightBackup;
-				}
-				if ((int) $leftMs !== (int) $rightMs)
-				{
-					return (int) $leftMs <=> (int) $rightMs;
-				}
-			}
-			elseif ($leftHealthy)
-			{
-				return -1;
-			}
-			elseif ($rightHealthy)
-			{
-				return 1;
-			}
-			$leftRole = isset($leftMeta['role']) ? (string) $leftMeta['role'] : null;
-			$rightRole = isset($rightMeta['role']) ? (string) $rightMeta['role'] : null;
-			$leftBackup = $isBackupEndpoint($left, $leftRole) ? 1 : 0;
-			$rightBackup = $isBackupEndpoint($right, $rightRole) ? 1 : 0;
-			if ($leftBackup !== $rightBackup)
-			{
-				return $leftBackup <=> $rightBackup;
-			}
-
-			return strcmp($left, $right);
-		});
-
-		return $normalised;
-	}
-
-	/**
-	 * @param list<string> $bases
-	 * @param array<string, int|null> $healthMs
-	 * @param array<string, array<string, mixed>> $endpointMeta
-	 * @param callable(string, ?string): bool $isBackupEndpoint
-	 */
-	public static function resolvePreferredHealthyBase(
-		array $bases,
-		array $healthMs,
-		array $endpointMeta,
-		callable $isBackupEndpoint,
-		string $fallback
-	): string {
-		$checkReady = self::lowestLatencyHealthyBase(
-			$bases,
-			$healthMs,
-			$endpointMeta,
-			$isBackupEndpoint,
-			true,
-			''
-		);
-		if ($checkReady !== '')
-		{
-			return $checkReady;
-		}
-
-		return self::lowestLatencyHealthyBase(
-			$bases,
-			$healthMs,
-			$endpointMeta,
-			$isBackupEndpoint,
-			false,
-			$fallback
-		);
 	}
 
 	public static function hotFailoverApiBaseUrl(string $manualBase, string $controlBase): string
@@ -583,7 +392,8 @@ final class FfApiResilience
 		string $apiBase,
 		string $manualBase,
 		array $edgeBases
-	): array {
+	): array
+	{
 		$controlBase = self::normaliseBaseUrl($controlBase);
 		$apiBase = self::normaliseBaseUrl($apiBase);
 		$manualBase = self::normaliseBaseUrl($manualBase);
@@ -672,15 +482,13 @@ final class FfApiResilience
 		{
 			return false;
 		}
-		foreach (
-			[
+		foreach ([
 				'/v1/check',
 				'/v1/site/ping',
 				'/v1/site/status',
 				'/v1/site/register',
 				'/v1/site/bootstrap',
-			] as $prefix
-		)
+			] as $prefix)
 		{
 			if ($requestPath === $prefix || self::startsWith($requestPath, $prefix . '/'))
 			{
@@ -733,12 +541,10 @@ final class FfApiResilience
 		{
 			return false;
 		}
-		foreach (
-			[
+		foreach ([
 				'/v1/forum/stats',
 				'/v1/site/portal',
-			] as $path
-		)
+			] as $path)
 		{
 			if ($requestPath === $path)
 			{
@@ -772,47 +578,6 @@ final class FfApiResilience
 	}
 
 	/**
-	 * Prefer edge bases for read-only plugin calls when reachable (not moderation sync).
-	 *
-	 * @param list<string> $bases
-	 * @param callable(string, ?string): bool $isBackupEndpoint
-	 * @return list<string>
-	 */
-	public static function filterOrderedBasesForReachableEdges(
-		array $bases,
-		callable $isBackupEndpoint,
-		string $controlBase,
-		string $hotApiBase
-	): array {
-		$controlBase = self::normaliseBaseUrl($controlBase);
-		$hotApiBase = self::normaliseBaseUrl($hotApiBase);
-		$filtered = [];
-		foreach ($bases as $base)
-		{
-			$base = self::normaliseBaseUrl((string) $base);
-			if ($base === '')
-			{
-				continue;
-			}
-			if ($controlBase !== '' && $base === $controlBase)
-			{
-				continue;
-			}
-			if ($hotApiBase !== '' && $base === $hotApiBase)
-			{
-				continue;
-			}
-			if ($isBackupEndpoint($base, null))
-			{
-				continue;
-			}
-			$filtered[] = $base;
-		}
-
-		return $filtered !== [] ? $filtered : $bases;
-	}
-
-	/**
 	 * Background site sync and moderation should not fan out across edge hostnames.
 	 */
 	public static function isControlPlanePreferredPath(?string $requestPath): bool
@@ -821,15 +586,13 @@ final class FfApiResilience
 		{
 			return false;
 		}
-		foreach (
-			[
+		foreach ([
 				'/v1/site/ping',
 				'/v1/site/status',
 				'/v1/site/register',
 				'/v1/site/attack-mode',
 				'/v1/site/attack-mode/end',
-			] as $path
-		)
+			] as $path)
 		{
 			if ($requestPath === $path)
 			{
@@ -923,7 +686,8 @@ final class FfApiResilience
 		array $orderedBases,
 		string $hotApiBase,
 		int $maxBases = self::CONTACT_PAGE_FAILOVER_MAX_BASES
-	): array {
+	): array
+	{
 		$hotApiBase = self::normaliseBaseUrl($hotApiBase);
 		$out = [];
 		if ($hotApiBase !== '')
@@ -953,7 +717,8 @@ final class FfApiResilience
 		string $throttleKey,
 		int $intervalSeconds = self::API_TIMEOUT_LOG_THROTTLE_SECONDS,
 		?int $now = null
-	): bool {
+	): bool
+	{
 		$now = $now ?? time();
 		$key = 'log_throttle_' . preg_replace('/[^a-z0-9_]+/i', '_', strtolower($throttleKey));
 		$last = (int) ($state[$key] ?? 0);
@@ -976,7 +741,8 @@ final class FfApiResilience
 		string $failureKey,
 		bool $failed,
 		int $threshold = self::CONSECUTIVE_TRANSIENT_LOG_THRESHOLD
-	): bool {
+	): bool
+	{
 		$threshold = max(1, $threshold);
 		$key = 'fail_streak_' . preg_replace('/[^a-z0-9_]+/i', '_', strtolower($failureKey));
 		if (!$failed)

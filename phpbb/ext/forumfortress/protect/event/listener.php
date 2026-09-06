@@ -1,5 +1,14 @@
 <?php
 
+/**
+ *
+ * Forum Fortress. An extension for the phpBB Forum Software package.
+ *
+ * @copyright (c) 2026 Marscastle Ltd trading as Forum Fortress
+ * @license license.txt GNU General Public License, version 2 (GPL-2.0)
+ *
+ */
+
 namespace forumfortress\protect\event;
 
 use forumfortress\protect\service\api_client;
@@ -16,6 +25,9 @@ use function max;
 use function strpos;
 use function time;
 
+/**
+ * Connects phpBB content and moderation events to Forum Fortress.
+ */
 class listener implements EventSubscriberInterface
 {
 	protected api_client $client;
@@ -96,7 +108,8 @@ class listener implements EventSubscriberInterface
 		log_interface $log,
 		driver_interface $db,
 		string $users_table
-	) {
+	)
+	{
 		$this->client = $client;
 		$this->user = $user;
 		$this->request = $request;
@@ -276,7 +289,7 @@ class listener implements EventSubscriberInterface
 
 			$sql = 'SELECT username, user_email, user_regdate, user_posts
 				FROM ' . $this->users_table . '
-				WHERE user_id = ' . $uid;
+				WHERE user_id = ' . (int) $uid;
 			$result = $this->db->sql_query($sql);
 			$row = $this->db->sql_fetchrow($result);
 			$this->db->sql_freeresult($result);
@@ -478,21 +491,23 @@ class listener implements EventSubscriberInterface
 			$profile_fields['jabber'] = $jabber;
 		}
 
-		$post = $this->request->get_super_global(\phpbb\request\request_interface::POST);
-		if (is_array($post))
+		$post_variable_names = $this->request->variable_names(request_interface::POST);
+		if (is_array($post_variable_names))
 		{
-			foreach ($post as $key => $value)
+			foreach ($post_variable_names as $key)
 			{
-				if (strpos((string) $key, 'pf_') !== 0 || !is_string($value))
+				$key = (string) $key;
+				if (strpos($key, 'pf_') !== 0)
 				{
 					continue;
 				}
+				$value = $this->request->variable($key, '', true, request_interface::POST);
 				$trimmed = trim($value);
 				if ($trimmed === '')
 				{
 					continue;
 				}
-				$profile_fields[(string) $key] = $trimmed;
+				$profile_fields[$key] = $trimmed;
 				$chunks[] = $trimmed;
 			}
 		}

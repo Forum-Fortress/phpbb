@@ -10,7 +10,6 @@ class v_1_0_0 extends \phpbb\db\migration\migration
 			&& isset($this->config['ffprotect_delete_rejected_users'])
 			&& isset($this->config['ffprotect_cron_sync_last'])
 			&& isset($this->config['ffprotect_primary_domain'])
-			&& isset($this->config['ffprotect_control_base_url'])
 			&& isset($this->config['ffprotect_preferred_endpoint'])
 			&& isset($this->config['ffprotect_bypass_administrators'])
 			&& isset($this->config['ffprotect_acp_menu_v2']);
@@ -24,7 +23,6 @@ class v_1_0_0 extends \phpbb\db\migration\migration
 				['config.add', ['ffprotect_api_base_url', 'https://api.ffapi.net']],
 				['config.add', ['ffprotect_api_region', 'global']],
 				['config.add', ['ffprotect_allow_global_fallback', 0]],
-				['config.add', ['ffprotect_control_base_url', 'https://control.ffapi.net']],
 				['config.add', ['ffprotect_preferred_endpoint', '']],
 				['config.add', ['ffprotect_timeout', 3]],
 				['config.add', ['ffprotect_api_key', '']],
@@ -53,7 +51,6 @@ class v_1_0_0 extends \phpbb\db\migration\migration
 				['config.remove', ['ffprotect_api_base_url']],
 				['config.remove', ['ffprotect_api_region']],
 				['config.remove', ['ffprotect_allow_global_fallback']],
-				['config.remove', ['ffprotect_control_base_url']],
 				['config.remove', ['ffprotect_preferred_endpoint']],
 				['config.remove', ['ffprotect_timeout']],
 				['config.remove', ['ffprotect_api_key']],

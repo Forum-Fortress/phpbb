@@ -1,5 +1,14 @@
 <?php
 
+/**
+ *
+ * Forum Fortress. An extension for the phpBB Forum Software package.
+ *
+ * @copyright (c) 2026 Marscastle Ltd trading as Forum Fortress
+ * @license license.txt GNU General Public License, version 2 (GPL-2.0)
+ *
+ */
+
 namespace forumfortress\protect\di;
 
 /**

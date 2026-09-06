@@ -1,3 +1,7 @@
+# Forum Fortress phpBB Extension
+# Copyright (c) 2026 Marscastle Ltd trading as Forum Fortress
+# SPDX-License-Identifier: GPL-2.0-only
+
 services:
     forumfortress.protect.timeout_queue:
         class: forumfortress\protect\service\timeout_queue

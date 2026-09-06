@@ -1,12 +1,26 @@
 <?php
 
+/**
+ *
+ * Forum Fortress. An extension for the phpBB Forum Software package.
+ *
+ * @copyright (c) 2026 Marscastle Ltd trading as Forum Fortress
+ * @license license.txt GNU General Public License, version 2 (GPL-2.0)
+ *
+ */
+
 namespace forumfortress\protect\cron\task;
 
 use forumfortress\protect\service\api_client;
 use phpbb\config\config;
 
+/**
+ * Synchronises Forum Fortress state on phpBB's cron schedule.
+ */
 class sync extends \phpbb\cron\task\base
 {
+	protected const SYNC_INTERVAL_SECONDS = 600;
+
 	protected api_client $client;
 	protected config $config;
 
@@ -31,6 +45,6 @@ class sync extends \phpbb\cron\task\base
 	public function should_run(): bool
 	{
 		$last = (int) ($this->config['ffprotect_cron_sync_last'] ?? 0);
-		return $last < time() - 600;
+		return $last < time() - self::SYNC_INTERVAL_SECONDS;
 	}
 }

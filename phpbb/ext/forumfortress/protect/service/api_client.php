@@ -1,8 +1,15 @@
 <?php
 
-namespace forumfortress\protect\service;
+/**
+ *
+ * Forum Fortress. An extension for the phpBB Forum Software package.
+ *
+ * @copyright (c) 2026 Marscastle Ltd trading as Forum Fortress
+ * @license license.txt GNU General Public License, version 2 (GPL-2.0)
+ *
+ */
 
-require_once __DIR__ . '/ff_api_resilience.php';
+namespace forumfortress\protect\service;
 
 use phpbb\auth\auth;
 use phpbb\config\config;
@@ -39,15 +46,15 @@ use function substr;
 use function time;
 use function trim;
 
+/**
+ * Forum Fortress API client and endpoint-routing coordinator.
+ */
 class api_client
 {
 	public const PLATFORM = 'phpbb';
-	public const PLUGIN_VERSION = '1.3';
+	public const PLUGIN_VERSION = '1.2.7';
+	public const CONTROL_PLANE_BASE_URL = 'https://fortress.ffapi.net';
 	protected const HOURLY_SYNC_MIN_INTERVAL = 540;
-	protected const ENDPOINT_HEALTH_REFRESH_SECONDS = 3600;
-	protected const ENDPOINT_HEALTH_DEGRADED_REFRESH_SECONDS = 300;
-	protected const ENDPOINT_HEALTH_SLOW_TRIGGER_MS = 100;
-	protected const ENDPOINT_HEALTH_RECOVERY_MS = 80;
 	protected const ENDPOINT_REFRESH_REQUEST_MAX_DELAY_SECONDS = 60;
 	protected const CONNECTION_TEST_TIMEOUT_SECONDS = 2;
 	protected const CONNECTION_TEST_TOTAL_BUDGET_SECONDS = 5;
@@ -89,7 +96,8 @@ class api_client
 		string $php_ext,
 		moderation_bridge $moderation_bridge,
 		timeout_queue $timeout_queue
-	) {
+	)
+	{
 		$this->config = $config;
 		$this->config_text = $config_text;
 		$this->user = $user;
@@ -121,23 +129,6 @@ class api_client
 		return (bool) ($this->config['ffprotect_fail_open'] ?? true);
 	}
 
-	public function normalise_configured_base_url(string $value): string
-	{
-		$value = trim($value);
-		if ($value === '')
-		{
-			return '';
-		}
-
-		$normalised = $this->validated_base_url($value);
-		if ($normalised === null)
-		{
-			throw new \InvalidArgumentException('API endpoint URLs must be public HTTPS origins without credentials, paths, query strings, or fragments.');
-		}
-
-		return $normalised;
-	}
-
 	public function normalise_timeout_seconds($timeout): int
 	{
 		return max(self::MIN_HTTP_TIMEOUT_SECONDS, min(self::MAX_HTTP_TIMEOUT_SECONDS, (int) $timeout));
@@ -145,8 +136,17 @@ class api_client
 
 	public function bootstrap_if_needed(bool $force = false): ?array
 	{
-		if (!$this->is_enabled() || trim((string) ($this->config['ffprotect_api_key'] ?? '')) !== '')
+		if (!$this->is_enabled())
 		{
+			$this->last_request_error = null;
+			return null;
+		}
+		if (trim((string) ($this->config['ffprotect_api_key'] ?? '')) !== '')
+		{
+			if (trim((string) ($this->config['ffprotect_site_id'] ?? '')) === '')
+			{
+				return $this->site_status(self::CONNECTION_TEST_TIMEOUT_SECONDS);
+			}
 			$this->last_request_error = null;
 			return null;
 		}
@@ -176,7 +176,7 @@ class api_client
 		$started_at = microtime(true);
 		foreach ($this->bootstrap_bases_ordered() as $base)
 		{
-			if ((microtime(true) - $started_at) >= \FfApiResilience::RUNTIME_CHECK_TOTAL_BUDGET_SECONDS)
+			if ((microtime(true) - $started_at) >= ff_api_resilience::RUNTIME_CHECK_TOTAL_BUDGET_SECONDS)
 			{
 				break;
 			}
@@ -186,7 +186,7 @@ class api_client
 				$payload,
 				$base,
 				false,
-				\FfApiResilience::RUNTIME_CHECK_ENDPOINT_TIMEOUT_SECONDS,
+				ff_api_resilience::RUNTIME_CHECK_ENDPOINT_TIMEOUT_SECONDS,
 				false
 			);
 			$data = !empty($attempt['ok']) && isset($attempt['data']) && is_array($attempt['data']) ? $attempt['data'] : null;
@@ -200,7 +200,7 @@ class api_client
 		{
 			foreach ($this->bootstrap_bases_ordered() as $base)
 			{
-				if ((microtime(true) - $started_at) >= \FfApiResilience::RUNTIME_CHECK_TOTAL_BUDGET_SECONDS)
+				if ((microtime(true) - $started_at) >= ff_api_resilience::RUNTIME_CHECK_TOTAL_BUDGET_SECONDS)
 				{
 					break;
 				}
@@ -210,7 +210,7 @@ class api_client
 					$payload,
 					$base,
 					false,
-					\FfApiResilience::RUNTIME_CHECK_ENDPOINT_TIMEOUT_SECONDS,
+					ff_api_resilience::RUNTIME_CHECK_ENDPOINT_TIMEOUT_SECONDS,
 					false
 				);
 				$data = !empty($attempt['ok']) && isset($attempt['data']) && is_array($attempt['data']) ? $attempt['data'] : null;
@@ -293,6 +293,20 @@ class api_client
 			$this->last_request_error = null;
 			return null;
 		}
+		if (ff_api_resilience::apiRegionIsLocked($this->get_api_region()))
+		{
+			$timeout = max(1, $timeoutOverride ?? self::CONNECTION_TEST_TIMEOUT_SECONDS);
+			foreach (ff_api_resilience::regionLockedCheckBases($this->get_api_region(), $this->allow_global_emergency_fallback()) as $base)
+			{
+				$health = $this->raw_get_json($base, '/health', $timeout);
+				if (($health['status'] ?? 0) >= 200 && ($health['status'] ?? 0) < 300
+					&& is_array($health['data'] ?? null))
+				{
+					return $health['data'];
+				}
+			}
+			return null;
+		}
 
 		return $this->request_json('GET', '/health', [], $timeoutOverride ?? self::CONNECTION_TEST_TIMEOUT_SECONDS);
 	}
@@ -323,9 +337,14 @@ class api_client
 			return null;
 		}
 
-		return $this->request_json('GET', '/v1/site/status', [
+		$response = $this->request_json('GET', '/v1/site/status', [
 			'domain' => $this->get_domain(),
 		], $timeoutOverride ?? self::CONNECTION_TEST_TIMEOUT_SECONDS);
+		if (is_array($response))
+		{
+			$this->persist_identity($response);
+		}
+		return $response;
 	}
 
 	public function forum_stats(?int $timeoutOverride = null): ?array
@@ -573,11 +592,11 @@ class api_client
 		{
 			$actual = (bool) $response['attack_mode_active'];
 		}
-		elseif (is_array($response) && array_key_exists('enabled', $response))
+		else if (is_array($response) && array_key_exists('enabled', $response))
 		{
 			$actual = (bool) $response['enabled'];
 		}
-		elseif (is_array($response) && is_array($response['attack_mode'] ?? null) && array_key_exists('enabled', $response['attack_mode']))
+		else if (is_array($response) && is_array($response['attack_mode'] ?? null) && array_key_exists('enabled', $response['attack_mode']))
 		{
 			$actual = (bool) $response['attack_mode']['enabled'];
 		}
@@ -824,7 +843,7 @@ class api_client
 
 	protected function is_offline_api_key(): bool
 	{
-		return \FfApiResilience::isOfflineBootstrapKey(trim((string) ($this->config['ffprotect_api_key'] ?? '')), null);
+		return ff_api_resilience::isOfflineBootstrapKey(trim((string) ($this->config['ffprotect_api_key'] ?? '')), null);
 	}
 
 	/**
@@ -1029,11 +1048,11 @@ class api_client
 	protected function get_manual_base_url(): string
 	{
 		$legacy = (string) ($this->config['ffprotect_api_base_url'] ?? '');
-		if (!isset($this->config['ffprotect_api_region']) && \FfApiResilience::isLocalDevelopmentBaseUrl($legacy))
+		if (!isset($this->config['ffprotect_api_region']) && ff_api_resilience::isLocalDevelopmentBaseUrl($legacy))
 		{
 			return $this->normalise_base_url($legacy);
 		}
-		return \FfApiResilience::apiBaseUrlForRegion($this->get_api_region());
+		return ff_api_resilience::apiBaseUrlForRegion($this->get_api_region());
 	}
 
 	protected function get_api_region(): string
@@ -1041,9 +1060,9 @@ class api_client
 		$stored = (string) ($this->config['ffprotect_api_region'] ?? '');
 		if ($stored === '')
 		{
-			$stored = \FfApiResilience::apiRegionFromLegacyBaseUrl((string) ($this->config['ffprotect_api_base_url'] ?? ''));
+			$stored = ff_api_resilience::apiRegionFromLegacyBaseUrl((string) ($this->config['ffprotect_api_base_url'] ?? ''));
 		}
-		return \FfApiResilience::normaliseApiRegion($stored);
+		return ff_api_resilience::normaliseApiRegion($stored);
 	}
 
 	protected function allow_global_emergency_fallback(): bool
@@ -1053,48 +1072,12 @@ class api_client
 
 	protected function get_control_plane_base_url(): string
 	{
-		$configured = $this->normalise_base_url((string) ($this->config['ffprotect_control_base_url'] ?? ''));
-		if ($configured !== '')
-		{
-			return $configured;
-		}
-
-		return $this->derive_control_plane_base_from_manual($this->get_manual_base_url());
-	}
-
-	protected function get_preferred_base_override(): string
-	{
-		return $this->normalise_base_url((string) ($this->config['ffprotect_preferred_endpoint'] ?? ''));
-	}
-
-	protected function derive_control_plane_base_from_manual(string $manual): string
-	{
-		$manual = $this->normalise_base_url($manual);
-		if ($manual === '')
-		{
-			return '';
-		}
-		$host = parse_url($manual, PHP_URL_HOST);
-		if (!is_string($host) || $host === '')
-		{
-			return '';
-		}
-		$host = strtolower($host);
-		if (strpos($host, 'api.') === 0 && strpos($host, '.') !== false)
-		{
-			return $this->normalise_base_url('https://control.' . substr($host, 4));
-		}
-		if (strpos($host, 'control.') === 0)
-		{
-			return $manual;
-		}
-
-		return '';
+		return self::CONTROL_PLANE_BASE_URL;
 	}
 
 	protected function get_hot_failover_api_base_url(): string
 	{
-		return \FfApiResilience::hotFailoverApiBaseUrl(
+		return ff_api_resilience::hotFailoverApiBaseUrl(
 			$this->get_manual_base_url(),
 			$this->get_control_plane_base_url()
 		);
@@ -1121,14 +1104,14 @@ class api_client
 	/** @return list<string> */
 	protected function bootstrap_bases_ordered(): array
 	{
-		if (\FfApiResilience::apiRegionIsLocked($this->get_api_region()))
+		if (ff_api_resilience::apiRegionIsLocked($this->get_api_region()))
 		{
-			return \FfApiResilience::uniqueOrderedBases(
-				\FfApiResilience::regionLockedCheckBases($this->get_api_region(), $this->allow_global_emergency_fallback()),
+			return ff_api_resilience::uniqueOrderedBases(
+				ff_api_resilience::regionLockedCheckBases($this->get_api_region(), $this->allow_global_emergency_fallback()),
 				[$this->get_control_plane_base_url()]
 			);
 		}
-		return \FfApiResilience::bootstrapBasesOrdered(
+		return ff_api_resilience::bootstrapBasesOrdered(
 			$this->get_control_plane_base_url(),
 			$this->get_hot_failover_api_base_url(),
 			$this->get_manual_base_url(),
@@ -1139,7 +1122,7 @@ class api_client
 	/** @return list<string> */
 	protected function catalog_fetch_bases(): array
 	{
-		return \FfApiResilience::catalogFetchBases(
+		return ff_api_resilience::catalogFetchBases(
 			$this->get_control_plane_base_url(),
 			$this->get_hot_failover_api_base_url(),
 			$this->edge_bases_from_state()
@@ -1185,11 +1168,11 @@ class api_client
 		$state = $this->load_endpoint_state();
 		$previous_endpoints = is_array($state['endpoints'] ?? null) ? $state['endpoints'] : [];
 		$now = (int) time();
-		if (!$force && !\FfApiResilience::isEndpointCatalogStale($state))
+		if (!$force && !ff_api_resilience::isEndpointCatalogStale($state))
 		{
 			return true;
 		}
-		if (!$force && \FfApiResilience::shouldBackoffEndpointCatalogRefresh($state, $now))
+		if (!$force && ff_api_resilience::shouldBackoffEndpointCatalogRefresh($state, $now))
 		{
 			return false;
 		}
@@ -1227,7 +1210,7 @@ class api_client
 					'status' => isset($row['status']) ? (string) $row['status'] : '',
 					'role' => isset($row['role']) ? (string) $row['role'] : '',
 					'traffic_tier' => array_key_exists('traffic_tier', $row)
-						? \FfApiResilience::normaliseTrafficTier($row['traffic_tier'])
+						? ff_api_resilience::normaliseTrafficTier($row['traffic_tier'])
 						: null,
 				];
 			}
@@ -1238,7 +1221,7 @@ class api_client
 		}
 		if (!$urls)
 		{
-			\FfApiResilience::noteEndpointCatalogRefreshFailure($state, $now);
+			ff_api_resilience::noteEndpointCatalogRefreshFailure($state, $now);
 			$this->save_endpoint_state($state);
 
 			return false;
@@ -1254,7 +1237,7 @@ class api_client
 		{
 			$state['endpoint_meta'] = $endpoint_meta;
 		}
-		\FfApiResilience::noteEndpointCatalogRefreshSuccess($state);
+		ff_api_resilience::noteEndpointCatalogRefreshSuccess($state);
 		$this->save_endpoint_state($state);
 
 		return true;
@@ -1322,7 +1305,7 @@ class api_client
 
 	protected function maybe_refresh_endpoint_catalog_after_check_in(string $request_path): void
 	{
-		if (!\FfApiResilience::shouldRefreshEndpointCatalogOnCheckIn($request_path))
+		if (!ff_api_resilience::shouldRefreshEndpointCatalogOnCheckIn($request_path))
 		{
 			return;
 		}
@@ -1359,27 +1342,6 @@ class api_client
 		$host = parse_url($manual, PHP_URL_HOST);
 
 		return is_string($host) && strpos(strtolower($host), 'api.') === 0;
-	}
-
-	protected function should_probe_endpoint_health(string $base_url, array $state): bool
-	{
-		$base_url = $this->normalise_base_url($base_url);
-		if ($base_url === '')
-		{
-			return false;
-		}
-		$endpoint_meta = is_array($state['endpoint_meta'] ?? null) ? $state['endpoint_meta'] : [];
-		$meta = isset($endpoint_meta[$base_url]) && is_array($endpoint_meta[$base_url]) ? $endpoint_meta[$base_url] : [];
-		$role = isset($meta['role']) ? (string) $meta['role'] : null;
-		if ($this->is_catalog_backup_endpoint_url($base_url, $role))
-		{
-			return !$this->edges_healthy_for_check_traffic($state);
-		}
-		if (!$this->is_shared_api_round_robin_base($base_url))
-		{
-			return true;
-		}
-		return false;
 	}
 
 	/** Bootstrap, catalog, capabilities, plugin-release: control, hot api, then edges. */
@@ -1446,35 +1408,27 @@ class api_client
 		$this->hydrate_endpoint_state_if_stale();
 		$state = $this->load_endpoint_state();
 		$manual = $this->get_manual_base_url();
-		$preferred_override = $this->get_preferred_base_override();
 		$endpoints = is_array($state['endpoints'] ?? null) ? $state['endpoints'] : [];
 		$endpoints = $this->normalise_and_sanitise_endpoints($endpoints, $manual);
-		$health_ms = is_array($state['health_ms'] ?? null) ? $state['health_ms'] : [];
-		$normalised_health = [];
-		foreach ($health_ms as $base => $ms)
-		{
-			$normalized_base = $this->normalise_base_url((string) $base);
-			if ($normalized_base === '')
-			{
-				continue;
-			}
-			$normalised_health[$normalized_base] = is_int($ms) ? $ms : null;
-		}
 
 		return [
 			'catalog_fetched_at' => (int) ($state['catalog_fetched_at'] ?? 0),
 			'endpoints' => $endpoints,
-			'health_day' => (string) ($state['health_day'] ?? ''),
-			'health_ms' => $normalised_health,
-			'last_health_at' => (int) ($state['last_health_at'] ?? 0),
+			// Retain empty compatibility fields for older admin templates; the
+			// plugin no longer probes or stores endpoint latency.
+			'health_day' => '',
+			'health_ms' => [],
+			'last_health_at' => (int) ($state['catalog_fetched_at'] ?? 0),
 			'last_responded' => $this->normalise_base_url((string) ($state['last_responded'] ?? '')),
 			'last_responded_node' => trim((string) ($state['last_responded_node'] ?? '')),
 			'last_response_at' => (int) ($state['last_response_at'] ?? 0),
 			'last_site_ping_at' => (int) ($state['last_site_ping_at'] ?? 0),
 			'last_failure' => is_array($state['last_failure'] ?? null) ? $state['last_failure'] : null,
-			'preferred' => $this->normalise_base_url((string) ($preferred_override !== '' ? $preferred_override : ($state['preferred'] ?? $manual))),
-			'preferred_missing' => $this->normalise_base_url((string) ($state['preferred_missing'] ?? '')),
-			'preferred_missing_at' => (int) ($state['preferred_missing_at'] ?? 0),
+			// Compatibility fields for existing admin templates. GeoDNS owns
+			// route selection, so legacy preference state is intentionally ignored.
+			'preferred' => $manual,
+			'preferred_missing' => '',
+			'preferred_missing_at' => 0,
 		];
 	}
 
@@ -1486,11 +1440,7 @@ class api_client
 		{
 			$needs_hydration = true;
 		}
-		if (!is_array($state['health_ms'] ?? null))
-		{
-			$needs_hydration = true;
-		}
-		if ((int) ($state['catalog_fetched_at'] ?? 0) <= 0 || (int) ($state['last_health_at'] ?? 0) <= 0)
+		if ((int) ($state['catalog_fetched_at'] ?? 0) <= 0)
 		{
 			$needs_hydration = true;
 		}
@@ -1526,61 +1476,24 @@ class api_client
 		];
 	}
 
-	protected function edges_healthy_for_check_traffic(array $state): bool
-	{
-		$health_ms = is_array($state['health_ms'] ?? null) ? $state['health_ms'] : [];
-		$endpoint_meta = is_array($state['endpoint_meta'] ?? null) ? $state['endpoint_meta'] : [];
-		$is_backup = function (string $base, ?string $role): bool {
-			return $this->is_catalog_backup_endpoint_url($base, $role);
-		};
-
-		return \FfApiResilience::edgesHealthyForCheckTraffic($health_ms, $endpoint_meta, $is_backup);
-	}
-
 	public function endpoint_health_display_label(string $endpoint_url, ?array $state = null): string
 	{
 		$state = $state ?? $this->load_endpoint_state();
 		$endpoint_url = $this->normalise_base_url($endpoint_url);
-		if ($endpoint_url === '')
+		if ($endpoint_url === $this->get_manual_base_url())
 		{
-			return 'unreachable';
+			return 'GeoDNS primary';
 		}
-		$health_ms = is_array($state['health_ms'] ?? null) ? $state['health_ms'] : [];
-		$ms = array_key_exists($endpoint_url, $health_ms) ? $health_ms[$endpoint_url] : null;
-		if (is_int($ms) && $ms >= 0)
+		$meta = is_array($state['endpoint_meta'][$endpoint_url] ?? null) ? $state['endpoint_meta'][$endpoint_url] : [];
+		$role = strtolower((string) ($meta['role'] ?? ''));
+		if ($this->is_catalog_backup_endpoint_url($endpoint_url, $role))
 		{
-			return $ms . ' ms';
+			return 'control fallback';
 		}
-		$endpoint_meta = is_array($state['endpoint_meta'] ?? null) ? $state['endpoint_meta'] : [];
-		$meta = isset($endpoint_meta[$endpoint_url]) && is_array($endpoint_meta[$endpoint_url]) ? $endpoint_meta[$endpoint_url] : [];
-		$role = isset($meta['role']) ? (string) $meta['role'] : null;
-		if (!$this->should_probe_endpoint_health($endpoint_url, $state))
-		{
-			if ($this->is_shared_api_round_robin_base($endpoint_url))
-			{
-				return 'shared route';
-			}
-			if ($this->is_catalog_backup_endpoint_url($endpoint_url, $role))
-			{
-				if ($this->edges_healthy_for_check_traffic($state))
-				{
-					if (!empty($meta['check_ready']))
-					{
-						return 'standby (check-ready backup)';
-					}
-
-					return 'standby (not used for checks)';
-				}
-
-				return 'standby (backup)';
-			}
-
-			return 'not probed';
-		}
-
-		return 'unreachable';
+		return array_key_exists('check_ready', $meta) && empty($meta['check_ready'])
+			? 'catalog standby'
+			: 'catalog fallback';
 	}
-
 	/**
 	 * @return list<array{endpoint: string, latency: string, is_preferred: bool}>
 	 */
@@ -1588,26 +1501,22 @@ class api_client
 	{
 		$this->hydrate_endpoint_state_if_stale();
 		$state = $this->load_endpoint_state();
-		$summary = $this->endpoint_state_summary();
-		$preferred = $this->normalise_base_url((string) ($summary['preferred'] ?? ''));
-		$endpoint_list = is_array($state['endpoints'] ?? null) ? $state['endpoints'] : [];
-		$health_ms = is_array($state['health_ms'] ?? null) ? $state['health_ms'] : [];
-		$display_targets = array_values(array_unique(array_merge($endpoint_list, array_keys($health_ms))));
-		sort($display_targets);
+		$primary = $this->get_manual_base_url();
+		$targets = ff_api_resilience::uniqueOrderedBases(
+			$primary !== '' ? [$primary] : [],
+			is_array($state['endpoints'] ?? null) ? $state['endpoints'] : []
+		);
 		$rows = [];
-		foreach ($display_targets as $endpoint)
+		foreach ($targets as $endpoint_url)
 		{
-			$endpoint_url = (string) $endpoint;
 			$rows[] = [
 				'endpoint' => $endpoint_url,
 				'latency' => $this->endpoint_health_display_label($endpoint_url, $state),
-				'is_preferred' => $endpoint_url === $preferred,
+				'is_preferred' => $endpoint_url === $primary,
 			];
 		}
-
 		return $rows;
 	}
-
 	public function refresh_endpoint_catalog_and_health(bool $force = false): void
 	{
 		if (!$this->is_enabled())
@@ -1620,199 +1529,42 @@ class api_client
 			return;
 		}
 		$state = $this->load_endpoint_state();
-		$now = (int) time();
-		$refresh_requested_at = (int) ($state['refresh_requested_at'] ?? 0);
-		$last_health_at = (int) ($state['last_health_at'] ?? 0);
-		if (
-			!$force
-			&& $refresh_requested_at > 0
-			&& $refresh_requested_at > $last_health_at
-			&& ($now - $refresh_requested_at) >= self::ENDPOINT_REFRESH_REQUEST_MAX_DELAY_SECONDS
-		)
-		{
-			$force = true;
-		}
-		$force_health_refresh = false;
 		if ($force)
 		{
 			$state['catalog_fetched_at'] = 0;
-			$this->invalidate_endpoint_health_state($state);
-			$state['refresh_requested_at'] = 0;
-			$force_health_refresh = true;
+			$this->save_endpoint_state($state);
 		}
-		$previous_endpoints = is_array($state['endpoints'] ?? null) ? $state['endpoints'] : [];
-		$day_key = gmdate('Y-m-d', $now);
-
-		if (\FfApiResilience::isEndpointCatalogStale($state))
+		if ($force || ff_api_resilience::isEndpointCatalogStale($state))
 		{
-			if (!$this->fetch_node_endpoints_catalog($force))
-			{
-				$state['catalog_fetched_at'] = $now;
-				$state['endpoints'] = [$manual];
-			}
-			else
-			{
-				$state = $this->load_endpoint_state();
-				if ($force_health_refresh)
-				{
-					$this->invalidate_endpoint_health_state($state);
-				}
-			}
+			$this->fetch_node_endpoints_catalog($force);
+			$state = $this->load_endpoint_state();
 		}
-
-		$list = $state['endpoints'] ?? null;
-		if (!is_array($list) || !$list)
-		{
-			$state['endpoints'] = [$manual];
-		}
-		$state['endpoints'] = $this->normalise_and_sanitise_endpoints(
-			is_array($state['endpoints']) ? $state['endpoints'] : [],
-			$manual
+		$endpoints = is_array($state['endpoints'] ?? null) ? $state['endpoints'] : [];
+		$state['endpoints'] = $this->normalise_and_sanitise_endpoints($endpoints, $manual);
+		$state['preferred'] = $manual;
+		$state['refresh_requested_at'] = 0;
+		unset(
+			$state['health_day'],
+			$state['health_ms'],
+			$state['last_health_at'],
+			$state['health_timed_out'],
+			$state['slow_health_mode'],
+			$state['best_latency_ms'],
+			$state['preferred_candidate'],
+			$state['preferred_candidate_streak'],
+			$state['preferred_missing'],
+			$state['preferred_missing_at'],
+			$state['suppressed_endpoints']
 		);
-		$preferred_override = $this->get_preferred_base_override();
-		if ($preferred_override !== '')
-		{
-			$with_override = is_array($state['endpoints']) ? $state['endpoints'] : [];
-			$with_override[] = $preferred_override;
-			$state['endpoints'] = $this->normalise_and_sanitise_endpoints($with_override, $manual);
-		}
-		if (!$state['endpoints'])
-		{
-			$state['endpoints'] = [$manual];
-		}
-		if (
-			!$force_health_refresh
-			&& $this->endpoint_catalog_changed($previous_endpoints, is_array($state['endpoints']) ? $state['endpoints'] : [])
-		)
-		{
-			$this->invalidate_endpoint_health_state($state);
-		}
-
-		$last_health = (int) ($state['last_health_at'] ?? 0);
-		$health_day = (string) ($state['health_day'] ?? '');
-		$health_refresh_interval = $this->endpoint_health_refresh_interval_seconds($state);
-
-		if ($health_day !== $day_key || ($now - $last_health) > $health_refresh_interval)
-		{
-			$candidates = is_array($state['endpoints']) ? $state['endpoints'] : [];
-			$candidates = array_values(array_unique(array_map(function ($u) {
-				return $this->normalise_base_url((string) $u);
-			}, $candidates)));
-			$candidates = array_filter($candidates, function ($u) {
-				return $u !== '';
-			});
-			$candidates = array_values($candidates);
-			if ($manual !== '' && !in_array($manual, $candidates, true) && $this->should_probe_endpoint_health($manual, $state))
-			{
-				$candidates[] = $manual;
-			}
-			$endpoint_meta = is_array($state['endpoint_meta'] ?? null) ? $state['endpoint_meta'] : [];
-			$probe_health_ms = [];
-			foreach (is_array($state['health_ms'] ?? null) ? $state['health_ms'] : [] as $probe_base => $probe_ms)
-			{
-				$normalised_probe_base = $this->normalise_base_url((string) $probe_base);
-				if ($normalised_probe_base === '')
-				{
-					continue;
-				}
-				$probe_health_ms[$normalised_probe_base] = is_int($probe_ms) ? $probe_ms : null;
-			}
-			$is_backup = function (string $base, ?string $role): bool {
-				return $this->is_catalog_backup_endpoint_url($base, $role);
-			};
-			$candidates = \FfApiResilience::sortBasesByHealthyLatency($candidates, $probe_health_ms, $endpoint_meta, $is_backup);
-			$latencies = [];
-			$started_at = microtime(true);
-			foreach ($candidates as $base)
-			{
-				if ((microtime(true) - $started_at) >= self::CONNECTION_TEST_TOTAL_BUDGET_SECONDS)
-				{
-					$state['health_timed_out'] = true;
-					break;
-				}
-				if (!$this->should_probe_endpoint_health($base, $state))
-				{
-					continue;
-				}
-				$t0 = microtime(true);
-				$hr = $this->raw_get_json($base, '/health', \FfApiResilience::RUNTIME_CHECK_ENDPOINT_TIMEOUT_SECONDS);
-				$ms = null;
-				if (($hr['status'] ?? 0) >= 200 && ($hr['status'] ?? 0) < 300)
-				{
-					$ms = (int) round((microtime(true) - $t0) * 1000);
-					$cr = $this->raw_get_json($base, '/v1/check-ready', \FfApiResilience::RUNTIME_CHECK_ENDPOINT_TIMEOUT_SECONDS);
-					$live_ready = ($cr['status'] ?? 0) >= 200 && ($cr['status'] ?? 0) < 300;
-					if (!isset($endpoint_meta[$base]) || !is_array($endpoint_meta[$base]))
-					{
-						$endpoint_meta[$base] = [];
-					}
-					$endpoint_meta[$base]['check_ready'] = $live_ready;
-					if (!$live_ready)
-					{
-						$ms = null;
-					}
-				}
-				$latencies[$base] = $ms;
-			}
-			$state['endpoint_meta'] = $endpoint_meta;
-			$best = \FfApiResilience::resolvePreferredHealthyBase(
-				array_keys($latencies),
-				$latencies,
-				$endpoint_meta,
-				$is_backup,
-				$manual
-			);
-			$current_preferred = $this->normalise_base_url((string) ($state['preferred'] ?? $manual));
-			$current_preferred_healthy = \FfApiResilience::isHealthyLatency($latencies[$current_preferred] ?? null);
-			if ($current_preferred !== '' && $best !== '' && $best !== $current_preferred && $current_preferred_healthy)
-			{
-				$candidate = $this->normalise_base_url((string) ($state['preferred_candidate'] ?? ''));
-				$streak = $candidate === $best ? ((int) ($state['preferred_candidate_streak'] ?? 0) + 1) : 1;
-				$state['preferred_candidate'] = $best;
-				$state['preferred_candidate_streak'] = $streak;
-				if ($streak < 2)
-				{
-					$best = $current_preferred;
-				}
-			}
-			else
-			{
-				unset($state['preferred_candidate'], $state['preferred_candidate_streak']);
-			}
-			$best_ms = \FfApiResilience::isHealthyLatency($latencies[$best] ?? null)
-				? (int) $latencies[$best]
-				: 999999;
-			$has_healthy = false;
-			foreach ($latencies as $ms)
-			{
-				if (\FfApiResilience::isHealthyLatency($ms))
-				{
-					$has_healthy = true;
-					break;
-				}
-			}
-			$state['last_health_at'] = $now;
-			$state['health_day'] = $day_key;
-			$state['health_ms'] = $latencies;
-			$state['preferred'] = $best;
-			$was_slow = !empty($state['slow_health_mode']);
-			$is_slow = !$has_healthy
-				|| $best_ms > self::ENDPOINT_HEALTH_SLOW_TRIGGER_MS
-				|| ($was_slow && $best_ms > self::ENDPOINT_HEALTH_RECOVERY_MS);
-			$state['slow_health_mode'] = $is_slow;
-			$state['best_latency_ms'] = $has_healthy ? (int) $best_ms : 0;
-			$state['refresh_requested_at'] = 0;
-		}
-		if ($preferred_override !== '')
-		{
-			$state['preferred'] = $preferred_override;
-		}
-
 		$this->save_endpoint_state($state);
 	}
 
 	public function refresh_endpoints_before_connection_test(): void
 	{
+		if (ff_api_resilience::apiRegionIsLocked($this->get_api_region()))
+		{
+			return;
+		}
 		$this->refresh_endpoint_catalog_and_health(true);
 	}
 
@@ -1843,29 +1595,30 @@ class api_client
 	}
 
 	/**
-	 * Routing: catalog from control; health probes edges only; checks on check_ready edges;
-	 * control for checks only when control_check_fallback or no healthy edge. api.ffapi.net is
-	 * legacy shared DNS (edges proxy health/catalog); do not treat control as down when two edges
-	 * are healthy (see edges_healthy_for_check_traffic / should_probe_endpoint_health).
+	 * The catalog controls whether the concrete control fallback may serve checks.
+	 * Normal check routing itself always starts at the GeoDNS hostname.
 	 */
 	protected function base_url_may_serve_check_traffic(string $base_url): bool
 	{
 		$base_url = $this->normalise_base_url($base_url);
-		if ($base_url === '')
+		$control = $this->normalise_base_url($this->get_control_plane_base_url());
+		if ($base_url === '' || $base_url !== $control)
 		{
-			return false;
+			return $base_url !== '';
 		}
-		$control = $this->get_control_plane_base_url();
-		if ($control !== '' && $base_url === $control)
+		$state = $this->load_endpoint_state();
+		if (!empty($state['control_check_fallback']))
 		{
-			$state = $this->load_endpoint_state();
-			return !empty($state['control_check_fallback']) || !$this->edges_healthy_for_check_traffic($state);
+			return true;
 		}
-		$manual = $this->get_manual_base_url();
-		if ($manual !== '' && $base_url === $manual)
+		foreach (is_array($state['endpoint_meta'] ?? null) ? $state['endpoint_meta'] : [] as $url => $meta)
 		{
-			$host = parse_url($manual, PHP_URL_HOST);
-			if (is_string($host) && strpos(strtolower($host), 'api.') === 0)
+			if (!is_array($meta) || empty($meta['check_ready']))
+			{
+				continue;
+			}
+			$role = isset($meta['role']) ? (string) $meta['role'] : null;
+			if (!$this->is_catalog_backup_endpoint_url((string) $url, $role))
 			{
 				return false;
 			}
@@ -1928,189 +1681,67 @@ class api_client
 	 */
 	protected function get_ordered_bases_for_requests(?string $request_path = null): array
 	{
-		$manual = $this->get_manual_base_url();
-		if ($manual === '')
+		$primary = $this->get_manual_base_url();
+		if ($primary === '')
 		{
 			return [];
 		}
 		$state = $this->load_endpoint_state();
-		if (is_string($request_path) && strpos($request_path, '/v1/check') === 0 && \FfApiResilience::apiRegionIsLocked($this->get_api_region()) && !$this->is_offline_api_key())
-		{
-			return \FfApiResilience::regionLockedCheckBases($this->get_api_region(), $this->allow_global_emergency_fallback());
-		}
 		$is_check_path = is_string($request_path) && strpos($request_path, '/v1/check') === 0;
-		if (
-			is_string($request_path)
-			&& strpos($request_path, '/v1/check') === 0
-			&& $this->is_offline_api_key()
-		)
+		if ($is_check_path && ff_api_resilience::apiRegionIsLocked($this->get_api_region()) && !$this->is_offline_api_key())
 		{
-			$pinned = \FfApiResilience::offlinePinnedCheckBases($state);
+			return ff_api_resilience::regionLockedCheckBases(
+				$this->get_api_region(),
+				$this->allow_global_emergency_fallback()
+			);
+		}
+		if ($is_check_path && $this->is_offline_api_key())
+		{
+			$pinned = ff_api_resilience::offlinePinnedCheckBases($state);
 			if ($pinned)
 			{
 				return $pinned;
 			}
 		}
-		if (is_string($request_path) && \FfApiResilience::isStrictSupernodeSyncPath($request_path))
+		if (is_string($request_path) && ff_api_resilience::isStrictSupernodeSyncPath($request_path))
 		{
-			$bases = \FfApiResilience::moderationSyncBasesOrdered(
+			return ff_api_resilience::moderationSyncBasesOrdered(
 				$this->get_hot_failover_api_base_url(),
 				$this->get_control_plane_base_url()
 			);
-			if ($bases !== [])
-			{
-				return $bases;
-			}
-		}
-		$refresh_requested_at = (int) ($state['refresh_requested_at'] ?? 0);
-		if (!$is_check_path && $refresh_requested_at > 0 && (time() - $refresh_requested_at) >= self::ENDPOINT_REFRESH_REQUEST_MAX_DELAY_SECONDS)
-		{
-			try
-			{
-				$this->refresh_endpoint_catalog_and_health(true);
-				$state = $this->load_endpoint_state();
-			}
-			catch (\Throwable $e)
-			{
-			}
-		}
-		$endpoints = $state['endpoints'] ?? null;
-		if (!is_array($endpoints) || !$endpoints)
-		{
-			$endpoints = [$manual];
-		}
-		$endpoints = array_values(array_unique(array_map(function ($u) {
-			return $this->normalise_base_url((string) $u);
-		}, $endpoints)));
-		$endpoints = array_filter($endpoints, function ($u) {
-			return $u !== '';
-		});
-		$endpoints = array_values($endpoints);
-		$endpoint_meta = is_array($state['endpoint_meta'] ?? null) ? $state['endpoint_meta'] : [];
-		$health_ms = is_array($state['health_ms'] ?? null) ? $state['health_ms'] : [];
-		$latency_by_base = [];
-		foreach ($health_ms as $base => $ms)
-		{
-			$normalised_base = $this->normalise_base_url((string) $base);
-			if ($normalised_base === '')
-			{
-				continue;
-			}
-			$latency_by_base[$normalised_base] = is_int($ms) ? $ms : null;
-		}
-		$is_backup = function (string $base, ?string $role): bool {
-			return $this->is_catalog_backup_endpoint_url($base, $role);
-		};
-		$sorted = \FfApiResilience::sortBasesByHealthyLatency($endpoints, $latency_by_base, $endpoint_meta, $is_backup);
-		$preferred_override = $this->get_preferred_base_override();
-		$routing_fallback = in_array($manual, $endpoints, true) ? $manual : ($sorted[0] ?? $manual);
-		$computed_preferred = \FfApiResilience::resolvePreferredHealthyBase(
-			$sorted,
-			$latency_by_base,
-			$endpoint_meta,
-			$is_backup,
-			$routing_fallback
-		);
-		$preferred = $preferred_override !== '' ? $preferred_override : $computed_preferred;
-		$preferred_candidate = $preferred;
-		if ($preferred === '' || !in_array($preferred, $endpoints, true))
-		{
-			$state['preferred_missing'] = $preferred_candidate;
-			$state['preferred_missing_at'] = (int) time();
-			$state['refresh_requested_at'] = (int) time();
-			$preferred = $sorted[0] ?? $manual;
-			if ($preferred_override === '')
-			{
-				$state['preferred'] = $preferred;
-			}
-			$this->save_endpoint_state($state);
-		}
-		else if (isset($state['preferred_missing']))
-		{
-			unset($state['preferred_missing']);
-			unset($state['preferred_missing_at']);
-			$this->save_endpoint_state($state);
 		}
 
-		$out = \FfApiResilience::uniqueOrderedBases(
-			$preferred !== '' ? [$preferred] : [],
-			$sorted
-		);
-		if (!in_array($manual, $out, true))
-		{
-			$out[] = $manual;
-		}
+		$endpoints = is_array($state['endpoints'] ?? null) ? $state['endpoints'] : [];
+		$endpoints = array_values(array_filter(array_unique(array_map(function ($url) {
+			return $this->normalise_base_url((string) $url);
+		}, $endpoints))));
+		$endpoint_meta = is_array($state['endpoint_meta'] ?? null) ? $state['endpoint_meta'] : [];
+
+		// GeoDNS owns endpoint choice. Each new request starts at the regional
+		// API hostname; concrete catalog entries are same-request fallbacks only.
+		$out = [$primary];
 		if ($is_check_path)
 		{
-			$out = array_values(array_filter($out, function ($b) use ($endpoint_meta, $latency_by_base) {
-				$base = (string) $b;
-				if (!$this->base_url_may_serve_check_traffic($base))
+			$catalog_fallbacks = array_values(array_filter($endpoints, function ($base) use ($endpoint_meta) {
+				$meta = isset($endpoint_meta[$base]) && is_array($endpoint_meta[$base]) ? $endpoint_meta[$base] : [];
+				$role = isset($meta['role']) ? (string) $meta['role'] : null;
+				if ($this->is_catalog_backup_endpoint_url((string) $base, $role))
 				{
 					return false;
 				}
-				$ms = array_key_exists($base, $latency_by_base) && is_int($latency_by_base[$base])
-					? $latency_by_base[$base]
-					: null;
-
-				return \FfApiResilience::endpointEligibleForCheckTraffic($endpoint_meta, $base, $ms);
+				return !array_key_exists('check_ready', $meta) || !empty($meta['check_ready']);
 			}));
+			$out = ff_api_resilience::uniqueOrderedBases($out, $catalog_fallbacks);
 			$control = $this->normalise_base_url($this->get_control_plane_base_url());
-			if ($control !== '' && $this->base_url_may_serve_check_traffic($control) && !in_array($control, $out, true))
+			if ($control !== '' && (!empty($state['control_check_fallback']) || !$catalog_fallbacks))
 			{
 				$out[] = $control;
 			}
-			$out = \FfApiResilience::orderCheckBasesControlLast($out, $control);
-			$hot_api = $this->get_hot_failover_api_base_url();
-			$out = \FfApiResilience::uniqueOrderedBases(
-				array_values(array_filter($out, function ($base) use ($control) { return $base !== $control; })),
-				$hot_api !== '' ? [$hot_api] : [],
-				$control !== '' && $this->base_url_may_serve_check_traffic($control) ? [$control] : []
-			);
-			$unsuppressed = array_values(array_filter($out, function ($base) use ($state) {
-				return !$this->is_endpoint_suppressed((string) $base, $state);
-			}));
-			$out = $unsuppressed ?: $out;
+			return ff_api_resilience::orderCheckBasesControlLast($out, $control);
 		}
-		return $out;
-	}
 
-	protected function is_endpoint_suppressed(string $base_url, ?array $state = null): bool
-	{
-		$base_url = $this->normalise_base_url($base_url);
-		if ($base_url === '')
-		{
-			return false;
-		}
-		$state = $state ?? $this->load_endpoint_state();
-		$suppressed = is_array($state['suppressed_endpoints'] ?? null) ? $state['suppressed_endpoints'] : [];
-		return (int) ($suppressed[$base_url] ?? 0) > time();
+		return ff_api_resilience::uniqueOrderedBases($out, $endpoints);
 	}
-
-	protected function mark_preferred_base_after_failover(string $base_url): void
-	{
-		$base_url = $this->normalise_base_url($base_url);
-		if ($base_url === '')
-		{
-			return;
-		}
-		if ($this->get_preferred_base_override() !== '')
-		{
-			return;
-		}
-		$state = $this->load_endpoint_state();
-		$suppressed = is_array($state['suppressed_endpoints'] ?? null) ? $state['suppressed_endpoints'] : [];
-		unset($suppressed[$base_url]);
-		$state['suppressed_endpoints'] = $suppressed;
-		$state['preferred'] = $base_url;
-		unset($state['preferred_candidate'], $state['preferred_candidate_streak']);
-		$state['failover_at'] = (int) time();
-		$state['refresh_requested_at'] = 0;
-		$this->save_endpoint_state($state);
-		$this->log('info', 'Forum Fortress API switched to a responsive endpoint', [
-			'base' => $base_url,
-		]);
-	}
-
 	public function build_user_payload(array $user_row = []): array
 	{
 		$email = trim((string) ($user_row['user_email'] ?? ''));
@@ -2139,7 +1770,8 @@ class api_client
 		?int $timeout_override,
 		bool $suppress_timeout_error,
 		bool $timeout_retry_attempted = false
-	): ?array {
+	): ?array
+	{
 		$this->last_request_error = null;
 		$this->last_retryable_exception = null;
 		$result = $this->request_json_with_retry_pass(
@@ -2200,7 +1832,8 @@ class api_client
 		?int $timeout_override,
 		bool $suppress_timeout_error,
 		bool $timeout_retry_attempted
-	): ?array {
+	): ?array
+	{
 		$bases = $this->get_ordered_bases_for_requests($path);
 		if (!$bases)
 		{
@@ -2210,12 +1843,12 @@ class api_client
 
 		$hot_api = $this->get_hot_failover_api_base_url();
 		$is_check = strpos($path, '/v1/check') === 0;
-		$is_contact_check = \FfApiResilience::shouldUseContactPageRouting($path, $payload);
+		$is_contact_check = ff_api_resilience::shouldUseContactPageRouting($path, $payload);
 		$enforce_budget = $is_check && !$is_contact_check;
 		$attempt_timeout = $timeout_override;
 		if ($enforce_budget)
 		{
-			$attempt_timeout = min(max(1, $timeout_override ?? (int) ($this->config['ffprotect_timeout'] ?? 3)), \FfApiResilience::RUNTIME_CHECK_ENDPOINT_TIMEOUT_SECONDS);
+			$attempt_timeout = min(max(1, $timeout_override ?? (int) ($this->config['ffprotect_timeout'] ?? 3)), ff_api_resilience::RUNTIME_CHECK_ENDPOINT_TIMEOUT_SECONDS);
 		}
 		if ($is_check)
 		{
@@ -2226,7 +1859,7 @@ class api_client
 
 		foreach ($bases as $idx => $base_url)
 		{
-			if ($enforce_budget && (microtime(true) - $started_at) >= \FfApiResilience::RUNTIME_CHECK_TOTAL_BUDGET_SECONDS)
+			if ($enforce_budget && (microtime(true) - $started_at) >= ff_api_resilience::RUNTIME_CHECK_TOTAL_BUDGET_SECONDS)
 			{
 				break;
 			}
@@ -2251,10 +1884,6 @@ class api_client
 			{
 				/** @var array $out */
 				$out = $attempt['data'];
-				if ($is_check || $idx > 0)
-				{
-					$this->mark_preferred_base_after_failover($base_url);
-				}
 				return $out;
 			}
 			if (empty($attempt['failover']))
@@ -2279,7 +1908,6 @@ class api_client
 				{
 					/** @var array $out */
 					$out = $hot_attempt['data'];
-					$this->mark_preferred_base_after_failover($hot_api);
 					return $out;
 				}
 				if (empty($hot_attempt['failover']))
@@ -2288,12 +1916,12 @@ class api_client
 				}
 			}
 		}
-		if ($enforce_budget && (microtime(true) - $started_at) >= \FfApiResilience::RUNTIME_CHECK_TOTAL_BUDGET_SECONDS)
+		if ($enforce_budget && (microtime(true) - $started_at) >= ff_api_resilience::RUNTIME_CHECK_TOTAL_BUDGET_SECONDS)
 		{
 			return null;
 		}
 
-		if ($is_check && \FfApiResilience::apiRegionIsLocked($this->get_api_region()))
+		if ($is_check && ff_api_resilience::apiRegionIsLocked($this->get_api_region()))
 		{
 			return null;
 		}
@@ -2320,7 +1948,8 @@ class api_client
 		?int $timeout_override,
 		bool $suppress_timeout_error,
 		bool $timeout_retry_attempted
-	): ?array {
+	): ?array
+	{
 		if (strpos($path, '/v1/check') !== 0)
 		{
 			return null;
@@ -2372,7 +2001,8 @@ class api_client
 		?int $timeout_override,
 		bool $suppress_timeout_error,
 		bool $timeout_retry_attempted = false
-	): array {
+	): array
+	{
 		$base_url = $this->normalise_base_url($base_url);
 		if ($base_url === '')
 		{
@@ -2425,7 +2055,7 @@ class api_client
 			{
 				$this->last_check_had_timeout = true;
 			}
-			if ($is_timeout && !$timeout_retry_attempted && (strpos($path, '/v1/check') !== 0 || \FfApiResilience::apiRegionIsLocked($this->get_api_region())))
+			if ($is_timeout && !$timeout_retry_attempted && (strpos($path, '/v1/check') !== 0 || ff_api_resilience::apiRegionIsLocked($this->get_api_region())))
 			{
 				return $this->request_json_on_base(
 					$method,
@@ -2462,9 +2092,12 @@ class api_client
 			$decoded_err = json_decode((string) $raw, true);
 			if (
 				$this->is_offline_api_key()
-				&& \FfApiResilience::isNodeMismatchResponse(is_array($decoded_err) ? $decoded_err : null)
+				&& ff_api_resilience::isNodeMismatchResponse(is_array($decoded_err) ? $decoded_err : null)
 			)
 			{
+				$previous_key = (string) ($this->config['ffprotect_api_key'] ?? '');
+				$previous_site = (string) ($this->config['ffprotect_site_id'] ?? '');
+				$previous_state = $this->load_endpoint_state();
 				$this->reset_identity();
 				$state = $this->load_endpoint_state();
 				unset($state['offline_pinned'], $state['issuer_node_id'], $state['offline_preferred_endpoint']);
@@ -2496,11 +2129,24 @@ class api_client
 						$timeout_retry_attempted
 					);
 				}
+				$this->config->set('ffprotect_api_key', $previous_key);
+				$this->config->set('ffprotect_site_id', $previous_site);
+				$this->save_endpoint_state($previous_state);
 				return ['ok' => false, 'failover' => false];
 			}
-			if ($status === 401 && $allow_rebootstrap && $this->should_rebootstrap($status, (string) $raw, $path))
+			if ($allow_rebootstrap && $this->should_rebootstrap($status, (string) $raw, $path))
 			{
-				$this->reset_identity();
+				$previous_key = (string) ($this->config['ffprotect_api_key'] ?? '');
+				$previous_site = (string) ($this->config['ffprotect_site_id'] ?? '');
+				$previous_domain = (string) ($this->config['ffprotect_primary_domain'] ?? '');
+				if ($status === 409 && $this->response_error_code((string) $raw) === 'stale_site')
+				{
+					$this->config->set('ffprotect_site_id', '');
+				}
+				else
+				{
+					$this->reset_identity();
+				}
 				$bootstrap = $this->bootstrap_if_needed(true);
 				if ($bootstrap)
 				{
@@ -2527,11 +2173,14 @@ class api_client
 						$timeout_retry_attempted
 					);
 				}
+				$this->config->set('ffprotect_api_key', $previous_key);
+				$this->config->set('ffprotect_site_id', $previous_site);
+				$this->config->set('ffprotect_primary_domain', $previous_domain);
 			}
 
 			$this->record_endpoint_failure_and_request_refresh('non_success_status', $base_url, $path, (int) $status);
-			$failover = \FfApiResilience::shouldFailoverOnEndpointStatus((int) $status)
-				|| \FfApiResilience::shouldFailoverOnIntermittentStatus((int) $status, $path);
+			$failover = ff_api_resilience::shouldFailoverOnEndpointStatus((int) $status)
+				|| ff_api_resilience::shouldFailoverOnIntermittentStatus((int) $status, $path);
 			return ['ok' => false, 'failover' => $failover];
 		}
 
@@ -2560,11 +2209,20 @@ class api_client
 			{
 				$error = strtolower(trim((string) $detail));
 			}
-			if (in_array($error, ['invalid_key', 'unknown_site', 'invalid api key', 'site not found'], true))
+			if (in_array($error, ['invalid_key', 'invalid_api_key', 'unknown_site', 'invalid_key_format', 'site_not_found', 'invalid api key', 'site not found'], true))
 			{
+				$previous_key = (string) ($this->config['ffprotect_api_key'] ?? '');
+				$previous_site = (string) ($this->config['ffprotect_site_id'] ?? '');
+				$previous_domain = (string) ($this->config['ffprotect_primary_domain'] ?? '');
 				$this->config->set('ffprotect_api_key', '');
 				$this->config->set('ffprotect_site_id', '');
-				$this->bootstrap_if_needed(true);
+				$bootstrap = $this->bootstrap_if_needed(true);
+				if (!$bootstrap)
+				{
+					$this->config->set('ffprotect_api_key', $previous_key);
+					$this->config->set('ffprotect_site_id', $previous_site);
+					$this->config->set('ffprotect_primary_domain', $previous_domain);
+				}
 			}
 		}
 
@@ -2651,47 +2309,45 @@ class api_client
 		if ($status === 403)
 		{
 			$data = json_decode($body, true);
-			if (\FfApiResilience::isNodeMismatchResponse(is_array($data) ? $data : null))
+			if (ff_api_resilience::isNodeMismatchResponse(is_array($data) ? $data : null))
 			{
 				return $this->is_offline_api_key();
 			}
 		}
 
-		if ($status !== 401)
-		{
-			return false;
-		}
 		if ($path === '/v1/site/bootstrap' || trim((string) ($this->config['ffprotect_api_key'] ?? '')) === '')
 		{
 			return false;
 		}
-		$data = json_decode($body, true);
-		if (!is_array($data))
+		$code = $this->response_error_code($body);
+		if ($status === 409)
+		{
+			return $code === 'stale_site';
+		}
+		if ($status !== 401)
 		{
 			return false;
 		}
-		// Backend can emit either a flat body ({"error": "...", "message": "..."},
-		// produced by our HTTPException handler) or the FastAPI default
-		// ({"detail": {...}} or {"detail": "..."}). Match both shapes.
-		$candidates = [];
+		return in_array($code, ['invalid_key', 'invalid_api_key', 'unknown_site', 'invalid_key_format', 'site_not_found', 'invalid api key', 'site not found'], true);
+	}
+
+	protected function response_error_code(string $body): string
+	{
+		$data = json_decode($body, true);
+		if (!is_array($data))
+		{
+			return '';
+		}
 		if (isset($data['error']))
 		{
-			$candidates[] = strtolower(trim((string) $data['error']));
+			return strtolower(trim((string) $data['error']));
 		}
 		$detail = $data['detail'] ?? null;
 		if (is_array($detail) && isset($detail['error']))
 		{
-			$candidates[] = strtolower(trim((string) $detail['error']));
+			return strtolower(trim((string) $detail['error']));
 		}
-		foreach ($candidates as $candidate)
-		{
-			if (in_array($candidate, ['invalid_key', 'unknown_site', 'invalid_key_format'], true))
-			{
-				return true;
-			}
-		}
-		$detail_text = is_string($detail) ? strtolower(trim($detail)) : '';
-		return in_array($detail_text, ['invalid api key', 'site not found'], true);
+		return is_string($detail) ? strtolower(trim($detail)) : '';
 	}
 
 	protected function reset_identity(): void
@@ -2720,16 +2376,16 @@ class api_client
 		$state = $this->load_endpoint_state();
 		$key_type = isset($response['key_type']) ? (string) $response['key_type'] : '';
 		$api_key = isset($response['api_key']) ? (string) $response['api_key'] : '';
-		if (\FfApiResilience::isOfflineBootstrapKey($api_key, $key_type !== '' ? $key_type : null))
+		if (ff_api_resilience::isOfflineBootstrapKey($api_key, $key_type !== '' ? $key_type : null))
 		{
-			\FfApiResilience::applyOfflineBootstrapRouting($response, $state, $used_base);
+			ff_api_resilience::applyOfflineBootstrapRouting($response, $state, $used_base);
 		}
 		else
 		{
-			\FfApiResilience::applyOfflineBootstrapRouting($response, $state, $used_base);
+			ff_api_resilience::applyOfflineBootstrapRouting($response, $state, $used_base);
 		}
 		$this->save_endpoint_state($state);
-		if ($was_offline && $api_key !== '' && !\FfApiResilience::isOfflineBootstrapKey($api_key, null))
+		if ($was_offline && $api_key !== '' && !ff_api_resilience::isOfflineBootstrapKey($api_key, null))
 		{
 			// migrated to normal ff_* key
 		}
@@ -2818,7 +2474,7 @@ class api_client
 
 	protected static function normalize_domain(string $domain): string
 	{
-		return \FfApiResilience::normaliseDomain($domain);
+		return ff_api_resilience::normaliseDomain($domain);
 	}
 
 	protected static function is_forum_owned_domain(string $candidate, string $forum_domain): bool
@@ -2832,25 +2488,6 @@ class api_client
 
 		return $normalized_candidate === $normalized_forum_domain
 			|| substr($normalized_candidate, -strlen('.' . $normalized_forum_domain)) === '.' . $normalized_forum_domain;
-	}
-
-	protected function endpoint_health_refresh_interval_seconds(array $state): int
-	{
-		$best_latency = (int) ($state['best_latency_ms'] ?? 0);
-		$slow_mode = !empty($state['slow_health_mode']);
-		if ($slow_mode)
-		{
-			if ($best_latency > 0 && $best_latency <= self::ENDPOINT_HEALTH_RECOVERY_MS)
-			{
-				return self::ENDPOINT_HEALTH_REFRESH_SECONDS;
-			}
-			return self::ENDPOINT_HEALTH_DEGRADED_REFRESH_SECONDS;
-		}
-		if ($best_latency > self::ENDPOINT_HEALTH_SLOW_TRIGGER_MS)
-		{
-			return self::ENDPOINT_HEALTH_DEGRADED_REFRESH_SECONDS;
-		}
-		return self::ENDPOINT_HEALTH_REFRESH_SECONDS;
 	}
 
 	protected function get_moderation_sync_interval_seconds(array $state): int
@@ -2891,7 +2528,8 @@ class api_client
 		string $path,
 		?int $status = null,
 		string $message = ''
-	): void {
+	): void
+	{
 		$failure = [
 			'at' => (int) time(),
 			'reason' => $reason,
@@ -2911,20 +2549,6 @@ class api_client
 		$state = $this->load_endpoint_state();
 		$state['last_failure'] = $failure;
 		$state['refresh_requested_at'] = $failure['at'];
-		$suppressed = is_array($state['suppressed_endpoints'] ?? null) ? $state['suppressed_endpoints'] : [];
-		$retryable = $status === null || \FfApiResilience::shouldFailoverOnEndpointStatus((int) $status);
-		if ($retryable && $failure['base'] !== '')
-		{
-			$suppressed[$failure['base']] = $failure['at'] + \FfApiResilience::ENDPOINT_SUPPRESSION_SECONDS;
-		}
-		foreach ($suppressed as $base => $until)
-		{
-			if ((int) $until <= $failure['at'])
-			{
-				unset($suppressed[$base]);
-			}
-		}
-		$state['suppressed_endpoints'] = $suppressed;
 		$this->save_endpoint_state($state);
 	}
 

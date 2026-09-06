@@ -1,5 +1,14 @@
 <?php
 
+/**
+ *
+ * Forum Fortress. An extension for the phpBB Forum Software package.
+ *
+ * @copyright (c) 2026 Marscastle Ltd trading as Forum Fortress
+ * @license license.txt GNU General Public License, version 2 (GPL-2.0)
+ *
+ */
+
 namespace forumfortress\protect\service;
 
 use phpbb\config\config;
@@ -17,8 +26,16 @@ use function substr;
 use function time;
 use function trim;
 
+/**
+ * Maps phpBB moderation-queue operations to Forum Fortress actions.
+ */
 class moderation_bridge
 {
+	protected const EXCERPT_MAX_LENGTH = 280;
+	protected const FALLBACK_ACTOR_USER_ID = 2;
+	protected const PUBLIC_REASON_MAX_LENGTH = 2000;
+	protected const QUEUE_BATCH_LIMIT = 200;
+
 	protected driver_interface $db;
 	protected config $config;
 	protected user $user;
@@ -41,7 +58,8 @@ class moderation_bridge
 		string $php_ext,
 		content_visibility $content_visibility,
 		timeout_queue $timeout_queue
-	) {
+	)
+	{
 		$this->db = $db;
 		$this->config = $config;
 		$this->user = $user;
@@ -73,7 +91,7 @@ class moderation_bridge
 			LEFT JOIN ' . $this->users_table . ' u ON (p.poster_id = u.user_id)
 			WHERE ' . $this->db->sql_in_set('p.post_visibility', [ITEM_UNAPPROVED, ITEM_REAPPROVE]) . '
 			ORDER BY p.post_time ASC';
-		$result = $this->db->sql_query_limit($sql, 200);
+		$result = $this->db->sql_query_limit($sql, self::QUEUE_BATCH_LIMIT);
 		$output = [];
 		while ($row = $this->db->sql_fetchrow($result))
 		{
@@ -154,9 +172,9 @@ class moderation_bridge
 		$plain = trim(strip_tags($plain));
 		if (function_exists('mb_substr'))
 		{
-			return mb_substr($plain, 0, 280);
+			return mb_substr($plain, 0, self::EXCERPT_MAX_LENGTH);
 		}
-		return substr($plain, 0, 280);
+		return substr($plain, 0, self::EXCERPT_MAX_LENGTH);
 	}
 
 	public function execute_actions(array $actions): array
@@ -259,11 +277,11 @@ class moderation_bridge
 			}
 			if (function_exists('mb_substr'))
 			{
-				$reason = mb_substr($reason, 0, 2000);
+				$reason = mb_substr($reason, 0, self::PUBLIC_REASON_MAX_LENGTH);
 			}
 			else
 			{
-				$reason = substr($reason, 0, 2000);
+				$reason = substr($reason, 0, self::PUBLIC_REASON_MAX_LENGTH);
 			}
 			$post_row = $this->load_post_row($post_id);
 			if (!$post_row || !$this->matches_content_type($post_row, $type) || !$this->is_pending_post($post_row))
@@ -277,9 +295,9 @@ class moderation_bridge
 				continue;
 			}
 
-			$sql = 'UPDATE ' . $this->posts_table . "
-				SET post_edit_reason = '" . $this->db->sql_escape($reason) . "'
-				WHERE post_id = " . (int) $post_id . '
+			$sql = 'UPDATE ' . $this->posts_table . '
+				SET ' . $this->db->sql_build_array('UPDATE', ['post_edit_reason' => $reason]) . '
+				WHERE post_id = ' . (int) $post_id . '
 					AND ' . $this->db->sql_in_set('post_visibility', [ITEM_UNAPPROVED, ITEM_REAPPROVE]) . "
 					AND post_edit_reason = ''";
 			$this->db->sql_query($sql);
@@ -433,7 +451,7 @@ class moderation_bridge
 			return (int) $row['user_id'];
 		}
 
-		return 2;
+		return self::FALLBACK_ACTOR_USER_ID;
 	}
 
 	protected function approve_post(array $post_row, int $mod_user_id): void

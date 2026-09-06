@@ -1,11 +1,23 @@
 <?php
 
+/**
+ *
+ * Forum Fortress. An extension for the phpBB Forum Software package.
+ *
+ * @copyright (c) 2026 Marscastle Ltd trading as Forum Fortress
+ * @license license.txt GNU General Public License, version 2 (GPL-2.0)
+ *
+ */
+
 namespace forumfortress\protect\cron\task;
 
 use forumfortress\protect\service\api_client;
 use phpbb\config\config;
 use phpbb\config\db_text;
 
+/**
+ * Refreshes the Forum Fortress endpoint catalogue.
+ */
 class endpoint_catalog extends \phpbb\cron\task\base
 {
 	protected api_client $client;
@@ -40,6 +52,6 @@ class endpoint_catalog extends \phpbb\cron\task\base
 			$state = [];
 		}
 
-		return \FfApiResilience::isEndpointCatalogStale($state);
+		return \forumfortress\protect\service\ff_api_resilience::isEndpointCatalogStale($state);
 	}
 }

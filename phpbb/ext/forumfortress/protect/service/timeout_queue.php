@@ -1,5 +1,14 @@
 <?php
 
+/**
+ *
+ * Forum Fortress. An extension for the phpBB Forum Software package.
+ *
+ * @copyright (c) 2026 Marscastle Ltd trading as Forum Fortress
+ * @license license.txt GNU General Public License, version 2 (GPL-2.0)
+ *
+ */
+
 namespace forumfortress\protect\service;
 
 use phpbb\config\config;
@@ -14,6 +23,9 @@ use function time;
 
 /**
  * FFTimeout: queue timed-out checks for moderation sync recovery (plan-agnostic on control plane).
+ */
+/**
+ * Persists and recovers checks that timed out under fail-open policy.
  */
 class timeout_queue
 {
@@ -37,7 +49,8 @@ class timeout_queue
 		content_visibility $content_visibility,
 		string $posts_table,
 		string $topics_table
-	) {
+	)
+	{
 		$this->config = $config;
 		$this->config_text = $config_text;
 		$this->db = $db;

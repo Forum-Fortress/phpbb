@@ -1,5 +1,14 @@
 <?php
 
+/**
+ *
+ * Forum Fortress. An extension for the phpBB Forum Software package.
+ *
+ * @copyright (c) 2026 Marscastle Ltd trading as Forum Fortress
+ * @license license.txt GNU General Public License, version 2 (GPL-2.0)
+ *
+ */
+
 namespace forumfortress\protect\acp;
 
 if (!defined('IN_PHPBB'))
@@ -7,8 +16,17 @@ if (!defined('IN_PHPBB'))
 	exit;
 }
 
+/**
+ * Forum Fortress ACP settings and diagnostics module.
+ */
 class main_module
 {
+	protected const CONNECTION_TEST_TIMEOUT_SECONDS = 2;
+	protected const MAX_REGISTRATION_EMAIL_LENGTH = 254;
+	protected const MASKED_KEY_PREFIX_LENGTH = 6;
+	protected const MASKED_KEY_SUFFIX_LENGTH = 4;
+	protected const MASKED_KEY_VISIBLE_LENGTH = 10;
+
 	public $u_action;
 	public $tpl_name;
 	public $page_title;
@@ -46,7 +64,7 @@ class main_module
 
 		try
 		{
-			$client->refresh_endpoint_catalog_and_health($did_bootstrap, 2);
+			$client->refresh_endpoint_catalog_and_health($did_bootstrap, self::CONNECTION_TEST_TIMEOUT_SECONDS);
 		}
 		catch (\Throwable $e)
 		{
@@ -62,27 +80,18 @@ class main_module
 			{
 				trigger_error('FORM_INVALID');
 			}
-			try
-			{
-				$control_base_url = $client->normalise_configured_base_url(trim($request->variable('ffprotect_control_base_url', '', true)));
-				$api_region = \FfApiResilience::normaliseApiRegion($request->variable('ffprotect_api_region', 'global', true));
-				$api_base_url = \FfApiResilience::apiBaseUrlForRegion($api_region);
-			}
-			catch (\InvalidArgumentException $e)
-			{
-				trigger_error($e->getMessage() . adm_back_link($this->u_action));
-			}
+			$api_region = \forumfortress\protect\service\ff_api_resilience::normaliseApiRegion($request->variable('ffprotect_api_region', 'global', true));
+			$api_base_url = \forumfortress\protect\service\ff_api_resilience::apiBaseUrlForRegion($api_region);
 			$api_key = trim($request->variable('ffprotect_api_key', '', true));
 			if ($api_key !== '' && preg_match('/[\r\n]/', $api_key) === 1)
 			{
-				trigger_error('The API key must not contain line breaks.' . adm_back_link($this->u_action));
+				trigger_error($user->lang('ACP_FORUMFORTRESS_API_KEY_LINE_BREAKS') . adm_back_link($this->u_action));
 			}
 
 			$config->set('ffprotect_enabled', $request->variable('ffprotect_enabled', 0));
 			$config->set('ffprotect_api_base_url', $api_base_url);
 			$config->set('ffprotect_api_region', $api_region);
 			$config->set('ffprotect_allow_global_fallback', $request->variable('ffprotect_allow_global_fallback', 0));
-			$config->set('ffprotect_control_base_url', $control_base_url);
 			$config->set('ffprotect_preferred_endpoint', '');
 			$config->set('ffprotect_timeout', $client->normalise_timeout_seconds($request->variable('ffprotect_timeout', 3)));
 			if ($api_key !== '')
@@ -176,7 +185,7 @@ class main_module
 			{
 				try
 				{
-					$client->refresh_endpoint_catalog_and_health(true, 2);
+					$client->refresh_endpoint_catalog_and_health(true, self::CONNECTION_TEST_TIMEOUT_SECONDS);
 					$endpoint_summary = $client->endpoint_state_summary();
 					$endpoint_snapshot = $client->endpoint_state_snapshot();
 					$endpoint_latency_rows = $client->build_endpoint_latency_rows();
@@ -191,9 +200,9 @@ class main_module
 		{
 			try
 			{
-				$site_status = $client->site_status(2);
-				$forum_stats = $client->forum_stats(2);
-				$plugin_release = $client->plugin_release(2);
+				$site_status = $client->site_status(self::CONNECTION_TEST_TIMEOUT_SECONDS);
+				$forum_stats = $client->forum_stats(self::CONNECTION_TEST_TIMEOUT_SECONDS);
+				$plugin_release = $client->plugin_release(self::CONNECTION_TEST_TIMEOUT_SECONDS);
 			}
 			catch (\Throwable $e)
 			{
@@ -218,14 +227,13 @@ class main_module
 		$forum_last_synced = (int) ($endpoint_summary['last_site_ping_at'] ?? 0);
 		$last_health_at = (int) ($endpoint_summary['last_health_at'] ?? 0);
 		$last_failure = is_array($endpoint_snapshot['last_failure'] ?? null) ? $endpoint_snapshot['last_failure'] : null;
-		$last_failure_text = $this->format_last_failure($last_failure);
+		$last_failure_text = $this->format_last_failure($last_failure, $user);
 		$template->assign_vars([
 			'U_ACTION' => $this->u_action,
 			'FFPROTECT_ENABLED' => (int) ($config['ffprotect_enabled'] ?? 0),
 			'FFPROTECT_API_BASE_URL' => (string) ($config['ffprotect_api_base_url'] ?? ''),
-			'FFPROTECT_API_REGION' => \FfApiResilience::normaliseApiRegion((string) ($config['ffprotect_api_region'] ?? 'global')),
+			'FFPROTECT_API_REGION' => \forumfortress\protect\service\ff_api_resilience::normaliseApiRegion((string) ($config['ffprotect_api_region'] ?? 'global')),
 			'FFPROTECT_ALLOW_GLOBAL_FALLBACK' => (int) ($config['ffprotect_allow_global_fallback'] ?? 0),
-			'FFPROTECT_CONTROL_BASE_URL' => (string) ($config['ffprotect_control_base_url'] ?? ''),
 			'FFPROTECT_TIMEOUT' => $client->normalise_timeout_seconds($config['ffprotect_timeout'] ?? 3),
 			'FFPROTECT_SITE_ID' => (string) ($config['ffprotect_site_id'] ?? ''),
 			'FFPROTECT_FAIL_OPEN' => (int) ($config['ffprotect_fail_open'] ?? 1),
@@ -244,9 +252,9 @@ class main_module
 			'FFPROTECT_ACTION_RESULT_PAYLOADS' => $action_result['payloads'] ?? [],
 			'FFPROTECT_SITE_STATUS' => $site_status ? true : false,
 			'FFPROTECT_SITE_PLAN' => (string) ($site_status['plan'] ?? ''),
-			'FFPROTECT_SITE_REGISTRATION_REQUIRED' => isset($site_status['registration_required']) ? ((bool) $site_status['registration_required'] ? 'Yes' : 'No') : $user->lang('ACP_FORUMFORTRESS_UNKNOWN'),
+			'FFPROTECT_SITE_REGISTRATION_REQUIRED' => isset($site_status['registration_required']) ? ((bool) $site_status['registration_required'] ? $user->lang('ACP_FORUMFORTRESS_YES') : $user->lang('ACP_FORUMFORTRESS_NO')) : $user->lang('ACP_FORUMFORTRESS_UNKNOWN'),
 			'FFPROTECT_SHOW_REGISTRATION' => (int) ((isset($site_status['registration_required']) && (bool) $site_status['registration_required']) || (empty($config['ffprotect_site_id']))),
-			'FFPROTECT_SITE_ATTACK_MODE' => isset($site_status['attack_mode_active']) ? ((bool) $site_status['attack_mode_active'] ? 'Active' : 'Inactive') : $user->lang('ACP_FORUMFORTRESS_UNKNOWN'),
+			'FFPROTECT_SITE_ATTACK_MODE' => isset($site_status['attack_mode_active']) ? ((bool) $site_status['attack_mode_active'] ? $user->lang('ACP_FORUMFORTRESS_ACTIVE') : $user->lang('ACP_FORUMFORTRESS_INACTIVE')) : $user->lang('ACP_FORUMFORTRESS_UNKNOWN'),
 			'FFPROTECT_ATTACK_MODE_ACTIVE' => !empty($site_status['attack_mode_active']),
 			'FFPROTECT_SITE_DATASET_VERSION' => (string) ($site_status['dataset_version'] ?? ''),
 			'FFPROTECT_PREFERRED_ENDPOINT' => (string) ($endpoint_summary['preferred'] ?? ''),
@@ -263,7 +271,7 @@ class main_module
 			'FFPROTECT_FORUM_STATS' => $forum_stats ? true : false,
 			'FFPROTECT_CURRENT_MONTH_CHECKS' => (int) ($forum_stats['current_month_checks'] ?? 0),
 			'FFPROTECT_ALLOWS' => (int) ($forum_stats['allows'] ?? 0),
-				'FFPROTECT_BLOCKS' => (int) ($forum_stats['blocks'] ?? 0),
+			'FFPROTECT_BLOCKS' => (int) ($forum_stats['blocks'] ?? 0),
 			'FFPROTECT_CAN_PORTAL' => (int) (!empty($config['ffprotect_site_id']) && !empty($config['ffprotect_api_key'])),
 			'FFPROTECT_PORTAL_DIRECT_URL' => $portal_direct_url,
 		]);
@@ -330,16 +338,16 @@ class main_module
 			$client->clear_last_request_error();
 			$bootstrap = $client->bootstrap_if_needed(true);
 			$e_bootstrap = $client->get_last_request_error();
-			$client->refresh_endpoints_before_connection_test(2);
-			$health = $client->health(2);
+			$client->refresh_endpoints_before_connection_test(self::CONNECTION_TEST_TIMEOUT_SECONDS);
+			$health = $client->health(self::CONNECTION_TEST_TIMEOUT_SECONDS);
 			$e_health = $client->get_last_request_error();
-			$capabilities = $client->capabilities(2);
+			$capabilities = $client->capabilities(self::CONNECTION_TEST_TIMEOUT_SECONDS);
 			$e_capabilities = $client->get_last_request_error();
-			$site_status = $client->site_status(2);
+			$site_status = $client->site_status(self::CONNECTION_TEST_TIMEOUT_SECONDS);
 			$e_site_status = $client->get_last_request_error();
-			$forum_stats = $client->forum_stats(2);
+			$forum_stats = $client->forum_stats(self::CONNECTION_TEST_TIMEOUT_SECONDS);
 			$e_forum_stats = $client->get_last_request_error();
-			$site_ping = $client->site_ping(2);
+			$site_ping = $client->site_ping(self::CONNECTION_TEST_TIMEOUT_SECONDS);
 			$e_site_ping = $client->get_last_request_error();
 
 			$result['payloads'] = [
@@ -375,12 +383,12 @@ class main_module
 
 		if ($email === '')
 		{
-			$result['error'] = 'Registration email is required.';
+			$result['error'] = $user->lang('ACP_FORUMFORTRESS_REGISTRATION_EMAIL_REQUIRED');
 			return $result;
 		}
-		if (filter_var($email, FILTER_VALIDATE_EMAIL) === false || strlen($email) > 254)
+		if (filter_var($email, FILTER_VALIDATE_EMAIL) === false || strlen($email) > self::MAX_REGISTRATION_EMAIL_LENGTH)
 		{
-			$result['error'] = 'Enter a valid registration email address.';
+			$result['error'] = $user->lang('ACP_FORUMFORTRESS_REGISTRATION_EMAIL_INVALID');
 			return $result;
 		}
 
@@ -421,37 +429,39 @@ class main_module
 			return '';
 		}
 
-		if (strlen($key) <= 10)
+		if (strlen($key) <= self::MASKED_KEY_VISIBLE_LENGTH)
 		{
 			return str_repeat('*', strlen($key));
 		}
 
-		return substr($key, 0, 6) . str_repeat('*', max(0, strlen($key) - 10)) . substr($key, -4);
+		return substr($key, 0, self::MASKED_KEY_PREFIX_LENGTH)
+			. str_repeat('*', max(0, strlen($key) - self::MASKED_KEY_VISIBLE_LENGTH))
+			. substr($key, -self::MASKED_KEY_SUFFIX_LENGTH);
 	}
 
-	protected function format_last_failure(?array $failure): string
+	protected function format_last_failure(?array $failure, $user): string
 	{
 		if (!$failure)
 		{
 			return '';
 		}
 
-		$parts = [(string) ($failure['reason'] ?? 'unknown')];
+		$parts = [(string) ($failure['reason'] ?? $user->lang('ACP_FORUMFORTRESS_UNKNOWN'))];
 		if (!empty($failure['status']))
 		{
-			$parts[] = 'status ' . (int) $failure['status'];
+			$parts[] = $user->lang('ACP_FORUMFORTRESS_FAILURE_STATUS', (int) $failure['status']);
 		}
 		if (!empty($failure['path']))
 		{
-			$parts[] = 'on ' . (string) $failure['path'];
+			$parts[] = $user->lang('ACP_FORUMFORTRESS_FAILURE_PATH', (string) $failure['path']);
 		}
 		if (!empty($failure['base']))
 		{
-			$parts[] = 'via ' . (string) $failure['base'];
+			$parts[] = $user->lang('ACP_FORUMFORTRESS_FAILURE_BASE', (string) $failure['base']);
 		}
 		if (!empty($failure['at']))
 		{
-			$parts[] = 'at ' . gmdate('Y-m-d H:i:s', (int) $failure['at']) . ' UTC';
+			$parts[] = $user->lang('ACP_FORUMFORTRESS_FAILURE_TIME', gmdate('Y-m-d H:i:s', (int) $failure['at']) . ' UTC');
 		}
 
 		return implode(' ', $parts);
