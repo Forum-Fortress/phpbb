@@ -1,0 +1,8 @@
+# Changelog
+
+## 1.2.7 - 2026-09-07
+
+- First release licensed under `GPL-2.0-or-later`, replacing the package's
+  former version-2-only grant.
+- Add the current complete GPLv2 text and same-licence contribution terms while
+  preserving the hosted-service and trademark boundary.

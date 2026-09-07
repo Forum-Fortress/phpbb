@@ -1,12 +1,12 @@
 Forum Fortress phpBB Extension
 Copyright (c) 2026 Marscastle Ltd trading as Forum Fortress
 
-Code license
+Code licence
 ------------
 
 The extension code in this package is free software licensed under the GNU
-General Public License, version 2 only (GPL-2.0-only). See license.txt for the
-complete license terms.
+General Public License, version 2 or later (GPL-2.0-or-later). See license.txt
+for the complete licence terms.
 
 This notice does not add any restriction to the permissions granted under the
 GNU General Public License.
@@ -29,11 +29,19 @@ of notices required by the GNU General Public License.
 Hosted service and other technology
 -----------------------------------
 
-The GPL-2.0-only license for this extension does not grant rights to the Forum
+The Forum Fortress hosted service is separate from this extension.
+The GPL-2.0-or-later licence for this extension does not grant rights to the Forum
 Fortress hosted service, server-side software, API infrastructure, datasets,
 models, detection systems, threat intelligence, credentials, or other
 technology not included in this package. Access to the hosted service is
 governed separately by the applicable Forum Fortress terms and policies.
+
+Contributions
+-------------
+
+Contributions are submitted under GPL-2.0-or-later, the same licence as the
+project, and contributors retain their copyright. No contributor licence
+agreement or copyright assignment is required. See CONTRIBUTING.md.
 
 For trademark permissions or other enquiries, use the contact details at
 https://forumfortress.com/.
