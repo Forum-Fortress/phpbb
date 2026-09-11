@@ -51,18 +51,6 @@ services:
         tags:
             - { name: cron.task }
 
-    forumfortress.protect.cron.task.endpoint_catalog:
-        class: forumfortress\protect\cron\task\endpoint_catalog
-        public: true
-        arguments:
-            - '@forumfortress.protect.api_client'
-            - '@config'
-            - '@config_text'
-        calls:
-            - [set_name, [cron.task.forumfortress.protect.endpoint_catalog]]
-        tags:
-            - { name: cron.task }
-
     forumfortress.protect.listener:
         class: forumfortress\protect\event\listener
         arguments:

@@ -13,17 +13,16 @@ declare(strict_types=1);
 namespace forumfortress\protect\service;
 
 /**
- * Shared Forum Fortress API resilience helpers (bootstrap / catalog / hot failover).
+ * Shared Forum Fortress API resilience helpers (bootstrap and deterministic fallback).
  *
  * Copied into XenForo, phpBB, and Invision plugin trees on release; keep copies in sync.
  *
  * Manual verification matrix (when changing this file):
- * - fortress.ffapi.net down: bootstrap succeeds via api.ffapi.net or edge /v1/node-endpoints + edge bootstrap
- * - GeoDNS attempt down: check retries catalog edges without changing the next request's primary
- * - capabilities: control -> api.ffapi.net -> edge bases
- * - normal requests start at GeoDNS; catalog entries are same-request fallbacks only
+ * - global routing: api.ffapi.net then fortress.ffapi.net
+ * - regional routing: selected endpoint only unless global fallback is enabled
+ * - fallback success never changes the next request's primary
  * - offline ff_ob_* keys: checks pinned to issuer preferred_endpoint until control returns normal key
- * - POST /v1/check: GeoDNS first; control is used only when the catalog allows fallback
+ * - POST /v1/check: GeoDNS first with only policy-authorized fallbacks
  */
 
 final class ff_api_resilience
@@ -31,6 +30,7 @@ final class ff_api_resilience
 	public const OFFLINE_TOKEN_PREFIX = 'ff_ob_';
 	public const DEFAULT_API_REGION = 'global';
 	public const GLOBAL_API_BASE_URL = 'https://api.ffapi.net';
+	public const GLOBAL_FALLBACK_BASE_URL = 'https://fortress.ffapi.net';
 	private const API_REGION_BASE_URLS = [
 		'global' => self::GLOBAL_API_BASE_URL,
 		'uk' => 'https://api-uk.ffapi.net',
@@ -67,10 +67,13 @@ final class ff_api_resilience
 	{
 		$region = self::normaliseApiRegion($region);
 		$primary = self::apiBaseUrlForRegion($region);
-		return self::uniqueOrderedBases(
-			[$primary],
-			$region !== self::DEFAULT_API_REGION && $allowGlobalFallback ? [self::GLOBAL_API_BASE_URL] : []
-		);
+		if ($region === self::DEFAULT_API_REGION)
+		{
+			return [$primary, self::GLOBAL_FALLBACK_BASE_URL];
+		}
+		return $allowGlobalFallback
+			? [$primary, self::GLOBAL_API_BASE_URL, self::GLOBAL_FALLBACK_BASE_URL]
+			: [$primary];
 	}
 
 	public static function apiRegionIsLocked(?string $region): bool

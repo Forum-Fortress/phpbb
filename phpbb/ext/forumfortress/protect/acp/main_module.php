@@ -214,7 +214,7 @@ class main_module
 			try
 			{
 				$payload = $client->portal_launch();
-				if ($payload && !empty($payload['portal_url']))
+				if ($payload && !empty($payload['portal_url']) && $this->trusted_portal_url((string) $payload['portal_url']))
 				{
 					$portal_direct_url = (string) $payload['portal_url'];
 				}
@@ -295,6 +295,36 @@ class main_module
 				'IS_PREFERRED' => !empty($row['is_preferred']),
 			]);
 		}
+	}
+
+	protected function trusted_portal_url(string $value): bool
+	{
+		if (trim($value) === '' || filter_var($value, FILTER_VALIDATE_URL) === false)
+		{
+			return false;
+		}
+		$parts = parse_url($value);
+		if (!is_array($parts))
+		{
+			return false;
+		}
+		$host = strtolower((string) ($parts['host'] ?? ''));
+		$trusted_host = $host === 'forumfortress.com'
+			|| substr($host, -strlen('.forumfortress.com')) === '.forumfortress.com'
+			|| $host === 'ffapi.net'
+			|| substr($host, -strlen('.ffapi.net')) === '.ffapi.net';
+		$path = '/' . ltrim((string) ($parts['path'] ?? ''), '/');
+		$query = [];
+		parse_str((string) ($parts['query'] ?? ''), $query);
+		return strtolower((string) ($parts['scheme'] ?? '')) === 'https'
+			&& $trusted_host
+			&& !array_key_exists('user', $parts)
+			&& !array_key_exists('pass', $parts)
+			&& !array_key_exists('fragment', $parts)
+			&& (!array_key_exists('port', $parts) || (int) $parts['port'] === 443)
+			&& rtrim($path, '/') === '/access'
+			&& is_string($query['token'] ?? null)
+			&& trim($query['token']) !== '';
 	}
 
 	protected function auto_bootstrap_result($client): ?array
