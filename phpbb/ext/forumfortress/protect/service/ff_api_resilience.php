@@ -18,7 +18,7 @@ namespace forumfortress\protect\service;
  * Copied into XenForo, phpBB, and Invision plugin trees on release; keep copies in sync.
  *
  * Manual verification matrix (when changing this file):
- * - global routing: api.ffapi.net then fortress.ffapi.net
+ * - lifecycle and checks use public API routes only
  * - regional routing: selected endpoint only unless global fallback is enabled
  * - fallback success never changes the next request's primary
  * - offline ff_ob_* keys: checks pinned to issuer preferred_endpoint until control returns normal key
@@ -30,7 +30,6 @@ final class ff_api_resilience
 	public const OFFLINE_TOKEN_PREFIX = 'ff_ob_';
 	public const DEFAULT_API_REGION = 'global';
 	public const GLOBAL_API_BASE_URL = 'https://api.ffapi.net';
-	public const GLOBAL_FALLBACK_BASE_URL = 'https://fortress.ffapi.net';
 	private const API_REGION_BASE_URLS = [
 		'global' => self::GLOBAL_API_BASE_URL,
 		'uk' => 'https://api-uk.ffapi.net',
@@ -67,13 +66,10 @@ final class ff_api_resilience
 	{
 		$region = self::normaliseApiRegion($region);
 		$primary = self::apiBaseUrlForRegion($region);
-		if ($region === self::DEFAULT_API_REGION)
-		{
-			return [$primary, self::GLOBAL_FALLBACK_BASE_URL];
-		}
-		return $allowGlobalFallback
-			? [$primary, self::GLOBAL_API_BASE_URL, self::GLOBAL_FALLBACK_BASE_URL]
-			: [$primary];
+		return self::uniqueOrderedBases(
+			[$primary],
+			$region !== self::DEFAULT_API_REGION && $allowGlobalFallback ? [self::GLOBAL_API_BASE_URL] : []
+		);
 	}
 
 	public static function apiRegionIsLocked(?string $region): bool
@@ -299,7 +295,7 @@ final class ff_api_resilience
 	 * @param array<string, array<string, mixed>> $endpointMeta
 	 */
 	/**
-	 * Keep fortress.ffapi.net last on check paths so edges are always tried first.
+ * Keep a designated API route last on check paths so edges are always tried first.
 	 *
 	 * @param list<string> $bases
 	 * @return list<string>
