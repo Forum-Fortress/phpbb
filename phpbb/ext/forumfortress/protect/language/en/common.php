@@ -24,6 +24,12 @@ if (empty($lang) || !is_array($lang))
 }
 
 $lang = array_merge($lang, [
+	'ACP_FORUMFORTRESS_REPEAT_BAN' => 'Automatically ban repeat spammers for seven days',
+	'ACP_FORUMFORTRESS_REPEAT_EXPLAIN' => 'Off by default. Two distinct server-certified spam blocks within 24 hours can ban a new member with at most 10 posts. Staff, guests and established members are protected. A separate native cron task applies the reversible ban. Each member can receive at most one automatic ban; moderator reversals are preserved.',
+	'ACP_FORUMFORTRESS_REPEAT_UNAVAILABLE' => 'Unavailable: native cron, MySQL/MariaDB and transactional InnoDB tables are required. Ordinary spam checks continue.',
+	'ACP_FORUMFORTRESS_REPEAT_ACTIONS' => 'Recent automatic bans',
+	'ACP_FORUMFORTRESS_REPEAT_REVIEW' => 'Manage or reverse these bans using phpBB Administration → Users and Groups → Ban usernames. Native expiry applies after seven days. Disabling this option cancels pending evidence and preserves existing bans.',
+
 	'ACP_FORUMFORTRESS_TITLE' => 'Forum Fortress',
 	'ACP_FORUMFORTRESS_SETTINGS' => 'Settings',
 	'ACP_FORUMFORTRESS_PROTECTION' => 'Protection',
@@ -55,6 +61,7 @@ $lang = array_merge($lang, [
 	'ACP_FORUMFORTRESS_SITE_STATUS' => 'Site status',
 	'ACP_FORUMFORTRESS_ENDPOINT_HEALTH' => 'Endpoint routing',
 	'ACP_FORUMFORTRESS_PORTAL_LOGIN' => 'Open Forum Fortress',
+	'ACP_FORUMFORTRESS_PORTAL_ERROR' => 'Forum Fortress could not open the portal. Check the plugin connection and try again.',
 	'ACP_FORUMFORTRESS_ACTIONS' => 'Actions',
 	'ACP_FORUMFORTRESS_AUTO_BOOTSTRAP' => 'Automatic bootstrap',
 	'ACP_FORUMFORTRESS_CONNECTION_TEST' => 'Connection test',

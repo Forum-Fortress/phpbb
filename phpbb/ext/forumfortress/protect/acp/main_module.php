@@ -33,7 +33,7 @@ class main_module
 
 	public function main($id, $mode)
 	{
-		global $config, $request, $template, $user, $phpbb_container;
+		global $phpbb_root_path, $phpEx, $config, $request, $template, $user, $phpbb_container;
 
 		$user->add_lang_ext('forumfortress/protect', 'common');
 		$this->tpl_name = 'forumfortress';
@@ -46,9 +46,43 @@ class main_module
 		$site_status = null;
 		$forum_stats = null;
 		$plugin_release = null;
-		$portal_direct_url = '';
 		$did_bootstrap = false;
 		$early_bootstrap_payload = null;
+
+		if ($request->is_set_post('action_portal'))
+		{
+			if (!check_form_key('forumfortress_settings'))
+			{
+				trigger_error('FORM_INVALID');
+				return;
+			}
+
+			$portal_url = '';
+			try
+			{
+				$payload = $client->portal_launch();
+				if (is_array($payload) && is_string($payload['portal_url'] ?? null) && $this->trusted_portal_url($payload['portal_url']))
+				{
+					// Native redirect helpers expect a lowercase scheme.
+					$portal_url = 'https://' . substr($payload['portal_url'], strlen('https://'));
+				}
+			}
+			catch (\Throwable $e)
+			{
+			}
+
+			if ($portal_url !== '')
+			{
+				// The external destination has passed the portal bearer URL allowlist.
+				redirect($portal_url, false, true);
+				return;
+			}
+			$action_result = [
+				'title' => $this->page_title,
+				'error' => $user->lang('ACP_FORUMFORTRESS_PORTAL_ERROR'),
+				'payloads' => [],
+			];
+		}
 
 		if ($client->is_enabled() && trim((string) ($config['ffprotect_api_key'] ?? '')) === '' && trim((string) ($config['ffprotect_api_base_url'] ?? '')) !== '')
 		{
@@ -89,6 +123,8 @@ class main_module
 			}
 
 			$config->set('ffprotect_enabled', $request->variable('ffprotect_enabled', 0));
+			$config->set('ffprotect_repeat_ban', $request->variable('ffprotect_repeat_ban', 0) === 1 ? 1 : 0);
+			if (empty($config['ffprotect_repeat_ban']) || empty($config['ffprotect_enabled'])) { $phpbb_container->get('forumfortress.protect.repeat_offenders')->cancel_pending(); }
 			$config->set('ffprotect_api_base_url', $api_base_url);
 			$config->set('ffprotect_api_region', $api_region);
 			$config->set('ffprotect_allow_global_fallback', $request->variable('ffprotect_allow_global_fallback', 0));
@@ -209,27 +245,14 @@ class main_module
 			}
 		}
 
-		if (trim((string) ($config['ffprotect_api_key'] ?? '')) !== '' && trim((string) ($config['ffprotect_site_id'] ?? '')) !== '')
-		{
-			try
-			{
-				$payload = $client->portal_launch();
-				if ($payload && !empty($payload['portal_url']) && $this->trusted_portal_url((string) $payload['portal_url']))
-				{
-					$portal_direct_url = (string) $payload['portal_url'];
-				}
-			}
-			catch (\Throwable $e)
-			{
-			}
-		}
-
 		$forum_last_synced = (int) ($endpoint_summary['last_site_ping_at'] ?? 0);
 		$last_health_at = (int) ($endpoint_summary['last_health_at'] ?? 0);
 		$last_failure = is_array($endpoint_snapshot['last_failure'] ?? null) ? $endpoint_snapshot['last_failure'] : null;
 		$last_failure_text = $this->format_last_failure($last_failure, $user);
 		$template->assign_vars([
 			'U_ACTION' => $this->u_action,
+			'FFPROTECT_REPEAT_BAN' => (int) ($config['ffprotect_repeat_ban'] ?? 0),
+			'FFPROTECT_REPEAT_AVAILABLE' => $phpbb_container->get('forumfortress.protect.repeat_offenders')->available(),
 			'FFPROTECT_ENABLED' => (int) ($config['ffprotect_enabled'] ?? 0),
 			'FFPROTECT_API_BASE_URL' => (string) ($config['ffprotect_api_base_url'] ?? ''),
 			'FFPROTECT_API_REGION' => \forumfortress\protect\service\ff_api_resilience::normaliseApiRegion((string) ($config['ffprotect_api_region'] ?? 'global')),
@@ -273,7 +296,6 @@ class main_module
 			'FFPROTECT_ALLOWS' => (int) ($forum_stats['allows'] ?? 0),
 			'FFPROTECT_BLOCKS' => (int) ($forum_stats['blocks'] ?? 0),
 			'FFPROTECT_CAN_PORTAL' => (int) (!empty($config['ffprotect_site_id']) && !empty($config['ffprotect_api_key'])),
-			'FFPROTECT_PORTAL_DIRECT_URL' => $portal_direct_url,
 		]);
 
 		if (!empty($action_result['payloads']))
@@ -285,6 +307,14 @@ class main_module
 					'PAYLOAD' => $payload,
 				]);
 			}
+		}
+
+		foreach ($phpbb_container->get('forumfortress.protect.repeat_offenders')->recent() as $row)
+		{
+			$template->assign_block_vars('ffprotect_repeat_action', [
+				'UID' => (int) $row['uid'], 'AT' => gmdate('Y-m-d H:i:s', (int) $row['attempted_at']).' UTC',
+				'U_USER' => append_sid("{$phpbb_root_path}memberlist.$phpEx", 'mode=viewprofile&amp;u='.(int)$row['uid']),
+			]);
 		}
 
 		foreach ($endpoint_latency_rows as $row)

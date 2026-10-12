@@ -51,6 +51,26 @@ services:
         tags:
             - { name: cron.task }
 
+    forumfortress.protect.repeat_offenders:
+        public: true
+        class: forumfortress\protect\service\repeat_offenders
+        arguments:
+            - '@dbal.conn.driver'
+            - '%core.table_prefix%'
+            - '%core.root_path%'
+            - '%core.php_ext%'
+
+    forumfortress.protect.cron.task.repeat_offenders:
+        class: forumfortress\protect\cron\task\repeat_offenders
+        public: true
+        arguments:
+            - '@forumfortress.protect.repeat_offenders'
+            - '@config'
+        calls:
+            - [set_name, [cron.task.forumfortress.protect.repeat_offenders]]
+        tags:
+            - { name: cron.task }
+
     forumfortress.protect.listener:
         class: forumfortress\protect\event\listener
         arguments:
@@ -60,5 +80,6 @@ services:
             - '@log'
             - '@dbal.conn'
             - '%tables.users%'
+            - '@forumfortress.protect.repeat_offenders'
         tags:
             - { name: event.listener }

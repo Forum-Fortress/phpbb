@@ -37,6 +37,7 @@ class listener implements EventSubscriberInterface
 	protected driver_interface $db;
 	protected string $users_table;
 	protected ?string $last_register_decision = null;
+	protected ?\forumfortress\protect\service\repeat_offenders $repeat;
 
 	/** @var array<string, mixed>|null */
 	protected ?array $pending_post_timeout = null;
@@ -107,7 +108,8 @@ class listener implements EventSubscriberInterface
 		request_interface $request,
 		log_interface $log,
 		driver_interface $db,
-		string $users_table
+		string $users_table,
+		?\forumfortress\protect\service\repeat_offenders $repeat = null
 	)
 	{
 		$this->client = $client;
@@ -116,12 +118,14 @@ class listener implements EventSubscriberInterface
 		$this->log = $log;
 		$this->db = $db;
 		$this->users_table = $users_table;
+		$this->repeat = $repeat;
 	}
 
 	public static function getSubscribedEvents()
 	{
 		return [
 			'core.user_setup' => 'on_user_setup',
+			'core.garbage_collection' => ['on_cleanup', -1000],
 			'core.ucp_register_data_after' => 'on_register_validate',
 			'core.user_add_after' => 'on_user_add_after',
 			'core.user_active_flip_after' => 'on_user_active_flip_after',
@@ -133,6 +137,11 @@ class listener implements EventSubscriberInterface
 			'core.approve_posts_after' => 'on_posts_approved',
 			'core.disapprove_posts_after' => 'on_posts_disapproved',
 		];
+	}
+
+	public function on_cleanup($event): void
+	{
+		if ($this->repeat) { $this->repeat->flush(); }
 	}
 
 	public function on_user_setup($event): void
@@ -359,7 +368,8 @@ class listener implements EventSubscriberInterface
 		}
 
 		$post_data = $event['post_data'];
-		$message = (string) ($post_data['message'] ?? '');
+		$message = (string) ($post_data['message'] ?? $this->request->variable('message', '', true, request_interface::POST));
+		$native_valid = empty($event['error']);
 		$links = api_client::filter_external_links(api_client::extract_links($message), $this->client->get_domain());
 		$endpoint = $mode === 'post' ? 'topic' : 'reply';
 		$payload = [
@@ -383,6 +393,9 @@ class listener implements EventSubscriberInterface
 			return;
 		}
 		$this->pending_post_timeout = null;
+		$actor = (int) ($this->user->data['user_id'] ?? 0);
+		$owner = (int) ($post_data['poster_id'] ?? $actor);
+		if ($native_valid && $this->repeat) { $this->repeat->stage($owner, $actor, $message, $response); }
 		$errors = $event['error'];
 		$this->apply_decision_error($response, $errors);
 		$event['error'] = $errors;
@@ -528,6 +541,7 @@ class listener implements EventSubscriberInterface
 			'post_count' => (int) ($this->user->data['user_posts'] ?? 0),
 			'account_age_seconds' => !empty($this->user->data['user_regdate']) ? max(0, time() - (int) $this->user->data['user_regdate']) : 0,
 		]);
+		if (empty($event['error']) && $this->repeat) { $actor = (int) ($this->user->data['user_id'] ?? 0); $this->repeat->stage((int) ($data['user_id'] ?? $actor), $actor, $combined, $response); }
 		$errors = $event['error'];
 		$this->apply_decision_error($response, $errors);
 		$event['error'] = $errors;
@@ -555,6 +569,7 @@ class listener implements EventSubscriberInterface
 			'post_count' => (int) ($this->user->data['user_posts'] ?? 0),
 			'account_age_seconds' => !empty($this->user->data['user_regdate']) ? max(0, time() - (int) $this->user->data['user_regdate']) : 0,
 		]);
+		if (empty($event['error']) && $this->repeat) { $actor = (int) ($this->user->data['user_id'] ?? 0); $this->repeat->stage((int) ($event['user_id'] ?? $actor), $actor, $signature, $response); }
 		$errors = $event['error'];
 		$this->apply_decision_error($response, $errors);
 		$event['error'] = $errors;

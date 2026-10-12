@@ -44,6 +44,15 @@ class ext extends \phpbb\extension\base
 		return parent::enable_step($old_state);
 	}
 
+	public function disable_step($old_state)
+	{
+		if ($old_state === false && $this->container->has('forumfortress.protect.repeat_offenders'))
+		{
+			$this->container->get('forumfortress.protect.repeat_offenders')->cancel_pending();
+		}
+		return parent::disable_step($old_state);
+	}
+
 	public function purge_step($old_state)
 	{
 		$state = parent::purge_step($old_state);

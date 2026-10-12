@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.2
+
+- Add Off-by-default native seven-day bans after two server-certified spam blocks within 24 hours.
+- Persist deduplicated evidence at request cleanup and perform reversible native bans in a separate cron task.
+- Check current permissions, settings and transactional tables; commit native bans and lifetime action receipts together.
+
+
 ## 1.3.1 - 2026-09-18
 
 - Route lifecycle and bootstrap requests through the resilient public API path.
