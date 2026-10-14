@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.4 - 2026-10-14
+- Require three distinct cleanup-certified blocks within 24 hours and five or fewer posts before cleanup-mode enforcement.
+- Preserve the existing two-event, ten-post ban-only threshold and separate cleanup evidence from ordinary ban evidence.
+- Bind staged and persisted events to the active evidence pool so cleanup-only certificates cannot satisfy ban-only enforcement.
+- Verify fresh install, public 1.3.2 upgrade, uninstall, native restoration, receipts, concurrent workers and transaction rollback on phpBB 3.3.19 with PHP 8.3 and MariaDB/InnoDB.
+
+## 1.3.3 (unreleased; included in 1.3.4)
+
+- Add a separate Off-by-default repeat-spammer cleanup setting.
+- Use phpBB's reversible native soft-deletion API for up to five approved public replies after a confirmed seven-day ban.
+- Exclude topic starters, private messages, inaccessible/password-protected forums, and other members' content; record native reasons and durable per-post receipts.
+- Add a native fixture scenario for accepted posts, legitimate-reply preservation, restoration, and retry behavior.
+
 ## 1.3.2
 
 - Add Off-by-default native seven-day bans after two server-certified spam blocks within 24 hours.

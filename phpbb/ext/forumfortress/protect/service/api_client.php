@@ -52,7 +52,7 @@ use function trim;
 class api_client
 {
 	public const PLATFORM = 'phpbb';
-	public const PLUGIN_VERSION = '1.3.2';
+	public const PLUGIN_VERSION = '1.3.4';
 	public const CONTROL_PLANE_BASE_URL = 'https://api.ffapi.net';
 	protected const HOURLY_SYNC_MIN_INTERVAL = 540;
 	protected const STANDARD_HEARTBEAT_INTERVAL_SECONDS = 3600;

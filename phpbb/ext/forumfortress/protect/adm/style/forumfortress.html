@@ -62,6 +62,7 @@
 				<fieldset>
 					<legend>{L_ACP_FORUMFORTRESS_PROTECTION}</legend>
 					<dl><dt><label for="ffprotect_repeat_ban">{L_ACP_FORUMFORTRESS_REPEAT_BAN}{L_COLON}</label><br /><span>{L_ACP_FORUMFORTRESS_REPEAT_EXPLAIN}</span></dt><dd><input type="checkbox" id="ffprotect_repeat_ban" name="ffprotect_repeat_ban" value="1"<!-- IF FFPROTECT_REPEAT_BAN --> checked="checked"<!-- ENDIF --> /><br /><!-- IF not FFPROTECT_REPEAT_AVAILABLE -->{L_ACP_FORUMFORTRESS_REPEAT_UNAVAILABLE}<!-- ENDIF --></dd></dl>
+					<!-- IF FFPROTECT_REPEAT_CLEANUP_AVAILABLE --><dl><dt><label for="ffprotect_repeat_cleanup">{L_ACP_FORUMFORTRESS_REPEAT_CLEANUP}{L_COLON}</label><br /><span>{L_ACP_FORUMFORTRESS_REPEAT_CLEANUP_EXPLAIN}</span></dt><dd><input type="checkbox" id="ffprotect_repeat_cleanup" name="ffprotect_repeat_cleanup" value="1"<!-- IF FFPROTECT_REPEAT_CLEANUP --> checked="checked"<!-- ENDIF --> /></dd></dl><!-- ELSE --><dl><dt>{L_ACP_FORUMFORTRESS_REPEAT_CLEANUP}</dt><dd>{L_ACP_FORUMFORTRESS_REPEAT_CLEANUP_UNAVAILABLE}</dd></dl><!-- ENDIF -->
 					<dl><dt><label for="ffprotect_bypass_administrators">{L_ACP_FORUMFORTRESS_BYPASS_ADMINISTRATORS}{L_COLON}</label><br /><span>{L_ACP_FORUMFORTRESS_BYPASS_ADMINISTRATORS_EXPLAIN}</span></dt><dd><input type="checkbox" id="ffprotect_bypass_administrators" name="ffprotect_bypass_administrators" value="1"<!-- IF FFPROTECT_BYPASS_ADMINISTRATORS --> checked="checked"<!-- ENDIF --> /></dd></dl>
 					<dl><dt><label for="ffprotect_bypass_moderators">{L_ACP_FORUMFORTRESS_BYPASS_MODERATORS}{L_COLON}</label><br /><span>{L_ACP_FORUMFORTRESS_BYPASS_MODERATORS_EXPLAIN}</span></dt><dd><input type="checkbox" id="ffprotect_bypass_moderators" name="ffprotect_bypass_moderators" value="1"<!-- IF FFPROTECT_BYPASS_MODERATORS --> checked="checked"<!-- ENDIF --> /></dd></dl>
 					<dl><dt><label for="ffprotect_send_ham">{L_ACP_FORUMFORTRESS_SEND_HAM}{L_COLON}</label></dt><dd><input type="checkbox" id="ffprotect_send_ham" name="ffprotect_send_ham" value="1"<!-- IF FFPROTECT_SEND_HAM --> checked="checked"<!-- ENDIF --> /></dd></dl>
@@ -90,7 +91,7 @@
 
 	<!-- IF .ffprotect_repeat_action -->
 	<section class="ffCard"><strong>{L_ACP_FORUMFORTRESS_REPEAT_ACTIONS}</strong><p>{L_ACP_FORUMFORTRESS_REPEAT_REVIEW}</p>
-	<ul><!-- BEGIN ffprotect_repeat_action --><li><a href="{ffprotect_repeat_action.U_USER}">#{ffprotect_repeat_action.UID}</a>: {ffprotect_repeat_action.AT}</li><!-- END ffprotect_repeat_action --></ul></section>
+	<ul><!-- BEGIN ffprotect_repeat_action --><li><a href="{ffprotect_repeat_action.U_USER}">#{ffprotect_repeat_action.UID}</a>: {ffprotect_repeat_action.AT} - cleanup {ffprotect_repeat_action.CLEANUP_STATUS} ({ffprotect_repeat_action.CLEANUP_COUNT} hidden, {ffprotect_repeat_action.CLEANUP_SKIPPED} skipped)</li><!-- END ffprotect_repeat_action --></ul></section>
 	<!-- ENDIF -->
 
 	<!-- IF .ffprotect_endpoint_latency -->

@@ -25,6 +25,9 @@ if (empty($lang) || !is_array($lang))
 
 $lang = array_merge($lang, [
 	'ACP_FORUMFORTRESS_REPEAT_BAN' => 'Automatically ban repeat spammers for seven days',
+	'ACP_FORUMFORTRESS_REPEAT_CLEANUP' => 'Automatically hide repeat-spammer replies',
+	'ACP_FORUMFORTRESS_REPEAT_CLEANUP_EXPLAIN' => 'Cleanup requires three distinct cleanup-eligible blocks in 24 hours and an account with five posts or fewer. After the native seven-day ban succeeds, soft-delete up to five approved public replies. Topic starters, private messages, password-protected or guest-inaccessible forums, and other members’ posts are excluded. Deleted Posts in the Moderator Control Panel can restore the replies. This is separate from account deletion.',
+	'ACP_FORUMFORTRESS_REPEAT_CLEANUP_UNAVAILABLE' => 'Automatic cleanup is unavailable because its native transaction storage is not ready.',
 	'ACP_FORUMFORTRESS_REPEAT_EXPLAIN' => 'Off by default. Two distinct server-certified spam blocks within 24 hours can ban a new member with at most 10 posts. Staff, guests and established members are protected. A separate native cron task applies the reversible ban. Each member can receive at most one automatic ban; moderator reversals are preserved.',
 	'ACP_FORUMFORTRESS_REPEAT_UNAVAILABLE' => 'Unavailable: native cron, MySQL/MariaDB and transactional InnoDB tables are required. Ordinary spam checks continue.',
 	'ACP_FORUMFORTRESS_REPEAT_ACTIONS' => 'Recent automatic bans',

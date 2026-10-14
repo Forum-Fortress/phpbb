@@ -124,7 +124,10 @@ class main_module
 
 			$config->set('ffprotect_enabled', $request->variable('ffprotect_enabled', 0));
 			$config->set('ffprotect_repeat_ban', $request->variable('ffprotect_repeat_ban', 0) === 1 ? 1 : 0);
+			$repeat_worker = $phpbb_container->get('forumfortress.protect.repeat_offenders');
+			$config->set('ffprotect_repeat_cleanup', $repeat_worker->cleanup_supported() && $request->variable('ffprotect_repeat_cleanup', 0) === 1 ? 1 : 0);
 			if (empty($config['ffprotect_repeat_ban']) || empty($config['ffprotect_enabled'])) { $phpbb_container->get('forumfortress.protect.repeat_offenders')->cancel_pending(); }
+			if (empty($config['ffprotect_repeat_cleanup']) || empty($config['ffprotect_enabled']) || empty($config['ffprotect_repeat_ban'])) { $phpbb_container->get('forumfortress.protect.repeat_offenders')->cancel_cleanup_pending(); }
 			$config->set('ffprotect_api_base_url', $api_base_url);
 			$config->set('ffprotect_api_region', $api_region);
 			$config->set('ffprotect_allow_global_fallback', $request->variable('ffprotect_allow_global_fallback', 0));
@@ -252,6 +255,8 @@ class main_module
 		$template->assign_vars([
 			'U_ACTION' => $this->u_action,
 			'FFPROTECT_REPEAT_BAN' => (int) ($config['ffprotect_repeat_ban'] ?? 0),
+			'FFPROTECT_REPEAT_CLEANUP' => (int) ($config['ffprotect_repeat_cleanup'] ?? 0),
+			'FFPROTECT_REPEAT_CLEANUP_AVAILABLE' => $phpbb_container->get('forumfortress.protect.repeat_offenders')->cleanup_supported(),
 			'FFPROTECT_REPEAT_AVAILABLE' => $phpbb_container->get('forumfortress.protect.repeat_offenders')->available(),
 			'FFPROTECT_ENABLED' => (int) ($config['ffprotect_enabled'] ?? 0),
 			'FFPROTECT_API_BASE_URL' => (string) ($config['ffprotect_api_base_url'] ?? ''),
@@ -314,6 +319,8 @@ class main_module
 			$template->assign_block_vars('ffprotect_repeat_action', [
 				'UID' => (int) $row['uid'], 'AT' => gmdate('Y-m-d H:i:s', (int) $row['attempted_at']).' UTC',
 				'U_USER' => append_sid("{$phpbb_root_path}memberlist.$phpEx", 'mode=viewprofile&amp;u='.(int)$row['uid']),
+				'CLEANUP_STATUS' => (string) ($row['cleanup_status'] ?? 'not_requested'),
+				'CLEANUP_COUNT' => (int) ($row['cleanup_count'] ?? 0), 'CLEANUP_SKIPPED' => (int) ($row['cleanup_skipped'] ?? 0),
 			]);
 		}
 
