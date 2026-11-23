@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.5 - 2026-11-23
+
+- Keep one registration check across signup and activation. Preserve checks for previously unchecked pending accounts.
+- Keep pending moderation out of spam reputation.
+- Send spam feedback for explicit native Spam disapprovals. Preserve approval feedback and timeout recovery.
+- Verify native registration, activation and upgrade on phpBB 3.3.19.
+
 ## 1.3.4 - 2026-10-14
 - Require three distinct cleanup-certified blocks within 24 hours and five or fewer posts before cleanup-mode enforcement.
 - Preserve the existing two-event, ten-post ban-only threshold and separate cleanup evidence from ordinary ban evidence.

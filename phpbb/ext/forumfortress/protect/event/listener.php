@@ -45,6 +45,9 @@ class listener implements EventSubscriberInterface
 	/** @var array<string, mixed>|null */
 	protected ?array $pending_register_timeout = null;
 
+	/** @var array<string, mixed>|null */
+	protected ?array $registration_check = null;
+
 	protected function live_decision(?array $response): string
 	{
 		if (!is_array($response))
@@ -127,6 +130,7 @@ class listener implements EventSubscriberInterface
 			'core.user_setup' => 'on_user_setup',
 			'core.garbage_collection' => ['on_cleanup', -1000],
 			'core.ucp_register_data_after' => 'on_register_validate',
+			'core.user_add_modify_data' => 'on_user_add_modify_data',
 			'core.user_add_after' => 'on_user_add_after',
 			'core.user_active_flip_after' => 'on_user_active_flip_after',
 			'core.message_admin_form_submit_before' => 'on_contact_admin_validate',
@@ -187,6 +191,7 @@ class listener implements EventSubscriberInterface
 		}
 
 		$this->last_register_decision = null;
+		$this->pending_register_timeout = null;
 		$data = $event['data'];
 		$payload = [
 			'ip' => (string) $this->user->ip,
@@ -196,10 +201,22 @@ class listener implements EventSubscriberInterface
 			'user_agent' => (string) $this->request->header('User-Agent'),
 			'links' => [],
 		];
-		$response = $this->run_validation_check('register', $payload);
+		if ($this->registration_check === null || $this->registration_check['payload'] !== $payload)
+		{
+			$check_id = bin2hex(random_bytes(16));
+			$response = $this->run_validation_check('register', $payload + ['check_request_id' => $check_id]);
+			$this->registration_check = [
+				'payload' => $payload,
+				'check_id' => $check_id,
+				'response' => $response,
+				'timed_out' => $this->client->last_check_had_timeout(),
+			];
+		}
+		$response = $this->registration_check['response'];
+		$payload['check_request_id'] = $this->registration_check['check_id'];
 		if ($response === null)
 		{
-			if ($this->client->last_check_had_timeout() && $this->client->fail_open())
+			if ($this->registration_check['timed_out'] && $this->client->fail_open())
 			{
 				// A real phpBB user ID is not available until user_add_after.
 				$this->pending_register_timeout = [
@@ -217,6 +234,21 @@ class listener implements EventSubscriberInterface
 		$errors = $event['error'];
 		$this->apply_register_decision_error($response, $errors);
 		$event['error'] = $errors;
+	}
+
+	public function on_user_add_modify_data($event): void
+	{
+		$check = $this->registration_check;
+		$user = $event['user_row'];
+		if ($check === null || (string) ($user['username'] ?? '') !== $check['payload']['username']
+			|| strcasecmp((string) ($user['user_email'] ?? ''), $check['payload']['email']) !== 0)
+		{
+			return;
+		}
+
+		$sql_ary = $event['sql_ary'];
+		$sql_ary['user_ff_reg_check_id'] = $check['check_id'];
+		$event['sql_ary'] = $sql_ary;
 	}
 
 	public function on_user_add_after($event): void
@@ -242,20 +274,13 @@ class listener implements EventSubscriberInterface
 			);
 		}
 		$this->pending_register_timeout = null;
-		if ($this->last_register_decision === 'block' && $this->client->delete_rejected_users_enabled())
+		$this->registration_check = null;
+		$decision = $this->last_register_decision;
+		$this->last_register_decision = null;
+		if ($decision === 'block' && $this->client->delete_rejected_users_enabled())
 		{
 			$this->delete_user_if_present($user_id, (string) ($user_row['username'] ?? ''));
 		}
-		$this->client->report('register', [
-			'event_type' => 'register',
-			'ip' => (string) ($user_row['user_ip'] ?? $this->user->ip),
-			'username' => (string) ($user_row['username'] ?? ''),
-			'email' => (string) ($user_row['user_email'] ?? ''),
-			'email_domain' => api_client::email_domain((string) ($user_row['user_email'] ?? '')),
-			'payload' => [
-				'phpbb_user_id' => (int) ($event['user_id'] ?? 0),
-			],
-		]);
 	}
 
 	public function on_user_active_flip_after($event): void
@@ -296,19 +321,21 @@ class listener implements EventSubscriberInterface
 				continue;
 			}
 
-			$sql = 'SELECT username, user_email, user_regdate, user_posts
+			$sql = 'SELECT username, user_email, user_regdate, user_posts, user_ff_reg_check_id
 				FROM ' . $this->users_table . '
 				WHERE user_id = ' . (int) $uid;
 			$result = $this->db->sql_query($sql);
 			$row = $this->db->sql_fetchrow($result);
 			$this->db->sql_freeresult($result);
-			if (!is_array($row))
+			if (!is_array($row) || !empty($row['user_ff_reg_check_id']))
 			{
 				continue;
 			}
 
 			$payload = $this->client->build_user_payload(array_merge($row, ['username' => $row['username']]));
 			$payload['links'] = [];
+			// This legacy account has no receipt from the original registration.
+			$payload['check_request_id'] = substr(hash('sha256', 'phpbb-register:' . $uid . ':' . $row['user_regdate']), 0, 32);
 			$response = $this->run_validation_check('register', $payload);
 			if (!is_array($response))
 			{
@@ -335,6 +362,9 @@ class listener implements EventSubscriberInterface
 					$this->delete_user_if_present($uid, (string) ($row['username'] ?? ''));
 				}
 			}
+			$this->db->sql_query('UPDATE ' . $this->users_table . "
+				SET user_ff_reg_check_id = '" . $payload['check_request_id'] . "'
+				WHERE user_ff_reg_check_id = '' AND user_id = " . $uid);
 		}
 	}
 
@@ -428,63 +458,27 @@ class listener implements EventSubscriberInterface
 
 	public function on_post_submit($event): void
 	{
-		if (!$this->client->is_enabled())
+		if (!$this->client->is_enabled() || !is_array($this->pending_post_timeout))
 		{
 			return;
 		}
 
-		if (is_array($this->pending_post_timeout))
+		$pending = $this->pending_post_timeout;
+		$this->pending_post_timeout = null;
+		$post_id = (int) ($event['data']['post_id'] ?? 0);
+		if ($post_id > 0)
 		{
-			$post_id = (int) ($event['data']['post_id'] ?? 0);
-			$topic_id = (int) ($event['data']['topic_id'] ?? 0);
-			$forum_id = (int) ($event['data']['forum_id'] ?? 0);
-			$poster_id = (int) ($this->user->data['user_id'] ?? 0);
-			if ($post_id > 0)
-			{
-				$this->client->queue_timeout_recovery(
-					(string) ($this->pending_post_timeout['endpoint'] ?? 'reply'),
-					(array) ($this->pending_post_timeout['payload'] ?? []),
-					[
-						// submit_post_end retains the posting mode; topic_first_post_id is
-						// not guaranteed to be present in the event data on every phpBB 3.3 release.
-						'remote_content_type' => ((string) ($event['mode'] ?? '') === 'post') ? 'thread' : 'post',
-						'remote_content_id' => (string) $post_id,
-						'username' => (string) ($this->user->data['username'] ?? ''),
-					]
-				);
-			}
-			$this->pending_post_timeout = null;
+			$this->client->queue_timeout_recovery(
+				(string) ($pending['endpoint'] ?? 'reply'),
+				(array) ($pending['payload'] ?? []),
+				[
+					// submit_post_end retains the posting mode on phpBB 3.3.
+					'remote_content_type' => ((string) ($event['mode'] ?? '') === 'post') ? 'thread' : 'post',
+					'remote_content_id' => (string) $post_id,
+					'username' => (string) ($this->user->data['username'] ?? ''),
+				]
+			);
 		}
-
-		$mode = (string) $event['mode'];
-		if (!in_array($mode, ['post', 'reply'], true))
-		{
-			return;
-		}
-
-		$data = $event['data'];
-		$message = (string) ($data['message'] ?? '');
-		$links = api_client::filter_external_links(api_client::extract_links($message), $this->client->get_domain());
-		$post_visibility = (int) ($event['post_visibility'] ?? ($data['post_visibility'] ?? ITEM_APPROVED));
-		if (!in_array($post_visibility, [ITEM_UNAPPROVED, ITEM_REAPPROVE, ITEM_DELETED], true))
-		{
-			return;
-		}
-
-		$this->client->report('moderation', [
-			'event_type' => $mode === 'post' ? 'topic' : 'reply',
-			'ip' => (string) $this->user->ip,
-			'username' => (string) ($this->user->data['username'] ?? ''),
-			'domain' => $this->client->get_domain(),
-			'content' => $message !== '' ? $message : null,
-			'links' => $links,
-			'payload' => [
-				'post_id' => (int) ($data['post_id'] ?? 0),
-				'topic_id' => (int) ($data['topic_id'] ?? 0),
-				'forum_id' => (int) ($data['forum_id'] ?? 0),
-				'post_visibility' => $post_visibility,
-			],
-		]);
 	}
 
 	public function on_profile_info_validate($event): void
@@ -685,14 +679,16 @@ class listener implements EventSubscriberInterface
 
 	public function on_posts_disapproved($event): void
 	{
-		if (!$this->client->is_enabled())
+		// phpBB exposes the selected native reason as a language key.
+		if (!$this->client->is_enabled() || ($event['disapprove_reason_lang'] ?? '') !== 'SPAM')
 		{
 			return;
 		}
 
 		$post_info = $event['post_info'];
-		foreach ($post_info as $post_id => $post)
+		foreach (array_keys($event['post_disapprove_list']) as $post_id)
 		{
+			$post = $post_info[$post_id] ?? null;
 			if (!is_array($post))
 			{
 				continue;
