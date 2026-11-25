@@ -194,7 +194,7 @@ class listener implements EventSubscriberInterface
 		$this->pending_register_timeout = null;
 		$data = $event['data'];
 		$payload = [
-			'ip' => (string) $this->user->ip,
+			'ip' => $this->client->client_ip(),
 			'username' => (string) ($data['username'] ?? ''),
 			'email' => (string) ($data['email'] ?? ''),
 			'email_domain' => api_client::email_domain((string) ($data['email'] ?? '')),
@@ -403,7 +403,7 @@ class listener implements EventSubscriberInterface
 		$links = api_client::filter_external_links(api_client::extract_links($message), $this->client->get_domain());
 		$endpoint = $mode === 'post' ? 'topic' : 'reply';
 		$payload = [
-			'ip' => (string) $this->user->ip,
+			'ip' => $this->client->client_ip(),
 			'username' => (string) ($this->user->data['username'] ?? ''),
 			'content' => $message,
 			'links' => $links,
@@ -445,7 +445,7 @@ class listener implements EventSubscriberInterface
 			return;
 		}
 		$response = $this->run_validation_check('contact_page', [
-			'ip' => (string) $this->user->ip,
+			'ip' => $this->client->client_ip(),
 			'username' => (string) ($this->user->data['username'] ?? ''),
 			'content' => $content,
 			'links' => api_client::filter_external_links(api_client::extract_links($content), $this->client->get_domain()),
@@ -527,7 +527,7 @@ class listener implements EventSubscriberInterface
 		$combined = trim(implode("\n\n", $chunks));
 		$links = api_client::filter_external_links(api_client::extract_links($combined), $this->client->get_domain());
 		$response = $this->run_validation_check('profile', [
-			'ip' => (string) $this->user->ip,
+			'ip' => $this->client->client_ip(),
 			'username' => (string) ($this->user->data['username'] ?? ''),
 			'profile_fields' => $profile_fields,
 			'content' => $combined,
@@ -556,7 +556,7 @@ class listener implements EventSubscriberInterface
 
 		$links = api_client::filter_external_links(api_client::extract_links($signature), $this->client->get_domain());
 		$response = $this->run_validation_check('signature', [
-			'ip' => (string) $this->user->ip,
+			'ip' => $this->client->client_ip(),
 			'username' => (string) ($this->user->data['username'] ?? ''),
 			'signature_text' => $signature,
 			'links' => $links,

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.6 - 2026-11-25
+
+- Report the visitor IP automatically behind reverse proxies that forward it.
+
 ## 1.3.5 - 2026-11-23
 
 - Keep one registration check across signup and activation. Preserve checks for previously unchecked pending accounts.

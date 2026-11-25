@@ -11,6 +11,7 @@
 
 namespace forumfortress\protect\service;
 
+use ForumFortress\Proxy\ClientIp;
 use phpbb\auth\auth;
 use phpbb\config\config;
 use phpbb\config\db_text;
@@ -46,13 +47,15 @@ use function substr;
 use function time;
 use function trim;
 
+require_once __DIR__ . '/ClientIp.php';
+
 /**
  * Forum Fortress API client and endpoint-routing coordinator.
  */
 class api_client
 {
 	public const PLATFORM = 'phpbb';
-	public const PLUGIN_VERSION = '1.3.5';
+	public const PLUGIN_VERSION = '1.3.6';
 	public const CONTROL_PLANE_BASE_URL = 'https://api.ffapi.net';
 	protected const HOURLY_SYNC_MIN_INTERVAL = 540;
 	protected const STANDARD_HEARTBEAT_INTERVAL_SECONDS = 3600;
@@ -1589,12 +1592,20 @@ class api_client
 			$this->allow_global_emergency_fallback()
 		);
 	}
+	public function client_ip(): string
+	{
+		return ClientIp::resolve(
+			(string) $this->user->ip,
+			$this->request->get_super_global(request_interface::SERVER)
+		);
+	}
+
 	public function build_user_payload(array $user_row = []): array
 	{
 		$email = trim((string) ($user_row['user_email'] ?? ''));
 		$email_domain = self::email_domain($email);
 		return [
-			'ip' => (string) $this->user->ip,
+			'ip' => $this->client_ip(),
 			'username' => (string) ($user_row['username'] ?? $this->user->data['username'] ?? ''),
 			'email' => $email !== '' ? $email : null,
 			'email_domain' => $email_domain,
